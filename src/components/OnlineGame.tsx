@@ -4,11 +4,12 @@ import { Chess, type Move } from 'chess.js';
 import ChessBoard from '@/components/ChessBoard';
 import TopMoveTicker from '@/components/TopMoveTicker';
 import ThemeSelector, { type BoardTheme } from '@/components/ThemeSelector';
+import GameOptionsMenu from '@/components/GameOptionsMenu';
 import { enterMatchmakingQueue, leaveMatchmakingQueue, getTier } from '@/lib/api';
 
 interface Props {
   user: any;
-  onGameEnd: (result: 'win' | 'loss' | 'draw') => void;
+  onGameEnd: (result: 'win' | 'loss' | 'draw', movesCount?: number) => void;
   onBack: () => void;
 }
 
@@ -32,9 +33,10 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
   const [error, setError] = useState('');
   const [matchStatusText, setMatchStatusText] = useState('Searching for online players…');
 
-  // Board theme state
+  // Board theme state & Options menu state
   const [theme, setTheme] = useState<BoardTheme>('cyber');
   const [showThemeModal, setShowThemeModal] = useState(false);
+  const [showOptionsMenu, setShowOptionsMenu] = useState(false);
 
   // Move replay state (null = showing live board)
   const [viewIndex, setViewIndex] = useState<number | null>(null);
@@ -98,7 +100,7 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
     const result = iMyTurn ? 'loss' : 'win';
     setGameOver(result);
     setStatus(iMyTurn ? "Time's up! You lost on time." : "Opponent's time ran out — You win! 🏆");
-    onGameEnd(result);
+    onGameEnd(result, moveHistory.length);
   }
 
   // Cleanup on unmount
@@ -250,7 +252,8 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
         if (result) {
           setFen(chess.fen());
           setLastMove({ from: result.from, to: result.to });
-          setMoveHistory(chess.history({ verbose: true }));
+          const history = chess.history({ verbose: true });
+          setMoveHistory(history);
           setViewIndex(null); // Jump to live state when opponent moves
           updateCheck(chess);
           if (chess.isGameOver()) handleGameOver(chess, false);
@@ -261,7 +264,7 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
       if (data.type === 'RESIGN') {
         setGameOver('win');
         setStatus('Opponent resigned — You win! 🏆');
-        onGameEnd('win');
+        onGameEnd('win', moveHistory.length);
       }
 
       if (data.type === 'DRAW_OFFER') {
@@ -271,18 +274,18 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
 
       if (data.type === 'DRAW_ACCEPT') {
         setGameOver('draw');
-        setStatus('Draw agreed');
-        onGameEnd('draw');
+        setStatus('Draw agreed — 0 score change');
+        onGameEnd('draw', moveHistory.length);
       }
 
       if (data.type === 'DRAW_DECLINE') {
-        setStatus('Draw declined');
+        setStatus('Draw offer declined by opponent');
       }
 
       if (data.type === 'DISCONNECT') {
         setStatus('Opponent disconnected');
         setGameOver('win');
-        onGameEnd('win');
+        onGameEnd('win', moveHistory.length);
       }
     });
 
@@ -290,6 +293,7 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
       if (!gameOver) {
         setStatus('Opponent disconnected');
         setGameOver('win');
+        onGameEnd('win', moveHistory.length);
       }
     });
   }
@@ -309,7 +313,7 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
     if (chess.isCheckmate()) result = iMyMove ? 'win' : 'loss';
     setGameOver(result);
     setStatus(chess.isCheckmate() ? (iMyMove ? '🏆 You win by checkmate!' : '😔 Opponent wins by checkmate') : 'Draw!');
-    onGameEnd(result);
+    onGameEnd(result, moveHistory.length);
   }
 
   function handlePlayerMove(move: any) {
@@ -317,7 +321,8 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
     connRef.current?.send({ type: 'MOVE', move: { from: move.from, to: move.to, promotion: move.promotion } });
     setFen(chess.fen());
     setLastMove({ from: move.from, to: move.to });
-    setMoveHistory(chess.history({ verbose: true }));
+    const history = chess.history({ verbose: true });
+    setMoveHistory(history);
     setViewIndex(null);
     updateCheck(chess);
     if (chess.isGameOver()) handleGameOver(chess, true);
@@ -327,19 +332,21 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
   function resign() {
     connRef.current?.send({ type: 'RESIGN' });
     setGameOver('loss');
-    onGameEnd('loss');
+    setStatus('You resigned the match');
+    onGameEnd('loss', moveHistory.length);
   }
 
   function offerDraw() {
     connRef.current?.send({ type: 'DRAW_OFFER' });
-    setStatus('Draw offer sent…');
+    setStatus('Draw offer sent to opponent…');
   }
 
   function acceptDraw() {
     connRef.current?.send({ type: 'DRAW_ACCEPT' });
     setDrawOffer(false);
     setGameOver('draw');
-    onGameEnd('draw');
+    setStatus('Draw agreed — 0 score change');
+    onGameEnd('draw', moveHistory.length);
   }
 
   function declineDraw() {
@@ -494,7 +501,7 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
   return (
     <div className="app-content" data-theme={theme}>
       <div className="game-board-section">
-        {/* Top Move Ticker Bar (Chess.com Mobile App Layout) */}
+        {/* Top Move Ticker Bar */}
         <TopMoveTicker
           moveHistory={moveHistory}
           activeMoveIndex={activeMoveIndex}
@@ -563,9 +570,9 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
           </div>
         </div>
 
-        {/* Bottom Mobile App Action Bar (Matching User Screenshot Layout) */}
+        {/* Bottom Mobile App Action Bar */}
         <div className="bottom-app-bar">
-          <button className="bottom-action-btn" onClick={onBack} title="Game Options">
+          <button className="bottom-action-btn" onClick={() => setShowOptionsMenu(true)} title="Game Options">
             <span className="bottom-btn-icon">⚙️</span>
             <span>Options</span>
           </button>
@@ -612,10 +619,10 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
           </div>
 
           {drawOffer && (
-            <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, padding: '0.75rem' }}>
-              <p style={{ fontSize: '0.85rem', marginBottom: 8 }}>Opponent offers a draw</p>
+            <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, padding: '0.75rem', marginTop: '0.5rem' }}>
+              <p style={{ fontSize: '0.85rem', marginBottom: 8, fontWeight: 700, color: '#fcd34d' }}>🤝 Opponent offers a draw</p>
               <div className="btn-row">
-                <button className="btn btn-secondary" onClick={acceptDraw}>Accept</button>
+                <button className="btn btn-secondary" onClick={acceptDraw}>Accept Draw</button>
                 <button className="btn btn-danger" onClick={declineDraw}>Decline</button>
               </div>
             </div>
@@ -626,6 +633,9 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
               <div className="game-over-title">
                 {gameOver === 'win' ? '🏆 You Win!' : gameOver === 'loss' ? '😔 You Lose' : '🤝 Draw'}
               </div>
+              <div className="game-over-result">
+                {gameOver === 'draw' ? 'Draw match — 0 score change on both sides' : gameOver === 'win' ? '+1 Win — rank increased!' : 'Match forfeited / lost.'}
+              </div>
               <button className="btn btn-primary" style={{ marginTop: 12, width: '100%' }} onClick={onBack}>Back to Home</button>
             </div>
           )}
@@ -635,13 +645,24 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
           <div className="glass-card controls-card">
             <div className="controls-title">Controls</div>
             <div className="btn-row">
-              <button className="btn btn-secondary" onClick={() => setShowThemeModal(true)}>🎨 Color Theme</button>
-              <button className="btn btn-secondary" onClick={offerDraw}>🤝 Draw</button>
+              <button className="btn btn-secondary" onClick={() => setShowOptionsMenu(true)}>⚙️ Options</button>
+              <button className="btn btn-secondary" onClick={() => setShowThemeModal(true)}>🎨 Theme</button>
               <button className="btn btn-danger" onClick={resign}>🏳️ Resign</button>
             </div>
           </div>
         )}
       </div>
+
+      {/* Options Menu Modal */}
+      {showOptionsMenu && (
+        <GameOptionsMenu
+          isOnlineGame={true}
+          onOfferDraw={offerDraw}
+          onResign={resign}
+          onOpenTheme={() => setShowThemeModal(true)}
+          onClose={() => setShowOptionsMenu(false)}
+        />
+      )}
 
       {/* Theme Selector Modal */}
       {showThemeModal && (

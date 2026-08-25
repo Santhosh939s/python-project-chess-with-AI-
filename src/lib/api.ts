@@ -168,14 +168,31 @@ export async function getProfileById(uid: string, firebaseUser?: User): Promise<
   throw new Error('Profile not found');
 }
 
-export async function updateStats(uid: string, result: 'win' | 'loss' | 'draw'): Promise<void> {
+export async function updateStats(
+  uid: string,
+  result: 'win' | 'loss' | 'draw',
+  movesCount: number = 0
+): Promise<{ deltaScore: number }> {
   const db = getFirebaseDb();
+
+  let deltaScore = 0;
+  if (result === 'win') {
+    deltaScore = movesCount < 6 ? 10 : movesCount < 16 ? 15 : 25;
+  } else if (result === 'loss') {
+    deltaScore = movesCount < 6 ? -5 : movesCount < 16 ? -10 : -15;
+  } else {
+    // Draw -> 0 score change, no points deducted on either side
+    deltaScore = 0;
+  }
+
   await updateDoc(doc(db, 'users', uid), {
     gamesPlayed: increment(1),
     ...(result === 'win'  ? { wins:   increment(1) } : {}),
     ...(result === 'loss' ? { losses: increment(1) } : {}),
     ...(result === 'draw' ? { draws:  increment(1) } : {}),
   });
+
+  return { deltaScore };
 }
 
 export async function getLeaderboard(): Promise<UserProfile[]> {

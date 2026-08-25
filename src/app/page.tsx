@@ -89,17 +89,17 @@ export default function HomePage() {
     showToast('Signed out successfully');
   }
 
-  async function handleGameEnd(result: 'win' | 'loss' | 'draw') {
+  async function handleGameEnd(result: 'win' | 'loss' | 'draw', movesCount: number = 0) {
     if (user?.uid) {
       try {
-        await updateStats(user.uid, result);
+        const { deltaScore } = await updateStats(user.uid, result, movesCount);
         const fresh = await getProfileById(user.uid);
         const fullUser = userWithTier(fresh);
         setUser(fullUser);
         localStorage.setItem('chess_user_session', JSON.stringify(fullUser));
-        if (result === 'win')  showToast(`🏆 You won! Rank: ${getTier(fresh.wins).name}`);
-        else if (result === 'draw') showToast('🤝 It\'s a draw!');
-        else showToast('Better luck next time!');
+        if (result === 'win')  showToast(`🏆 Victory! (+${deltaScore} pts) Rank: ${getTier(fresh.wins).name}`);
+        else if (result === 'draw') showToast('🤝 Draw accepted! 0 points deducted on both sides.');
+        else showToast(`Match lost (${deltaScore} pts). Keep practicing!`);
       } catch {}
     }
     setScreen('home');

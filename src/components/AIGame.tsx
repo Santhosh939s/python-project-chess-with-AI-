@@ -4,12 +4,13 @@ import { Chess, type Move } from 'chess.js';
 import ChessBoard from '@/components/ChessBoard';
 import TopMoveTicker from '@/components/TopMoveTicker';
 import ThemeSelector, { type BoardTheme } from '@/components/ThemeSelector';
+import GameOptionsMenu from '@/components/GameOptionsMenu';
 import { getAIMove } from '@/lib/chessAI';
 import { getTier } from '@/lib/api';
 
 interface Props {
   user: any;
-  onGameEnd: (result: 'win' | 'loss' | 'draw') => void;
+  onGameEnd: (result: 'win' | 'loss' | 'draw', movesCount?: number) => void;
   onBack: () => void;
 }
 
@@ -29,6 +30,7 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
   // Board color theme state (defaulting to invented 'cyber' palette)
   const [theme, setTheme] = useState<BoardTheme>('cyber');
   const [showThemeModal, setShowThemeModal] = useState(false);
+  const [showOptionsMenu, setShowOptionsMenu] = useState(false);
 
   // Move replay state (null = showing live board)
   const [viewIndex, setViewIndex] = useState<number | null>(null);
@@ -155,9 +157,9 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Notify parent on game over
+  // Notify parent on game over with moves count
   useEffect(() => {
-    if (gameOver) onGameEnd(gameOver);
+    if (gameOver) onGameEnd(gameOver, moveHistory.length);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gameOver]);
 
@@ -175,6 +177,16 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
         makeAIMove();
       }
     }
+  }
+
+  function handleOfferDraw() {
+    setStatus('Draw agreed — Peace!');
+    setGameOver('draw');
+  }
+
+  function handleResign() {
+    setStatus('You resigned the match.');
+    setGameOver('loss');
   }
 
   // ── Calculate Board & Last Move to Display (Live or Replay) ─────────────────
@@ -216,23 +228,12 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
   const colorLabel = playerColor === 'w' ? '⬜ White' : '⬛ Black';
   const aiLabel    = playerColor === 'w' ? '⬛ Black' : '⬜ White';
 
-  // Group move history into pairs
-  const pairs: { w: Move; b?: Move; wIdx: number; bIdx?: number }[] = [];
-  for (let i = 0; i < moveHistory.length; i += 2) {
-    pairs.push({
-      w: moveHistory[i],
-      b: moveHistory[i + 1],
-      wIdx: i + 1,
-      bIdx: moveHistory[i + 1] ? i + 2 : undefined,
-    });
-  }
-
   const activeMoveIndex = viewIndex === null ? moveHistory.length : viewIndex;
 
   return (
     <div className="app-content" data-theme={theme}>
       <div className="game-board-section">
-        {/* Top Move Ticker Bar (Matching Chess.com Mobile App Layout) */}
+        {/* Top Move Ticker Bar */}
         <TopMoveTicker
           moveHistory={moveHistory}
           activeMoveIndex={activeMoveIndex}
@@ -303,9 +304,9 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
           </div>
         </div>
 
-        {/* Bottom Mobile App Action Bar (Matching User Screenshot Layout) */}
+        {/* Bottom Mobile App Action Bar */}
         <div className="bottom-app-bar">
-          <button className="bottom-action-btn" onClick={onBack} title="Game Options">
+          <button className="bottom-action-btn" onClick={() => setShowOptionsMenu(true)} title="Game Options">
             <span className="bottom-btn-icon">⚙️</span>
             <span>Options</span>
           </button>
@@ -365,7 +366,7 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
                 {gameOver === 'win' ? '🏆 You Win!' : gameOver === 'loss' ? '😔 AI Wins' : '🤝 Draw'}
               </div>
               <div className="game-over-result">
-                {gameOver === 'win' ? '+1 Win — rank increased!' : gameOver === 'draw' ? 'Good game!' : 'Better luck next time!'}
+                {gameOver === 'win' ? '+1 Win — rank increased!' : gameOver === 'draw' ? 'Draw match — 0 score change!' : 'Resigned / Lost match.'}
               </div>
               <button className="btn btn-primary" style={{ marginTop: 12, width: '100%' }} onClick={onBack}>
                 Back to Menu
@@ -378,12 +379,24 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
           <div className="glass-card controls-card">
             <div className="controls-title">Controls</div>
             <div className="btn-row">
+              <button className="btn btn-secondary" onClick={() => setShowOptionsMenu(true)}>⚙️ Options</button>
               <button className="btn btn-secondary" onClick={() => setShowThemeModal(true)}>🎨 Board Color</button>
-              <button className="btn btn-danger" onClick={() => onGameEnd('loss')} disabled={thinking}>Resign</button>
+              <button className="btn btn-danger" onClick={handleResign} disabled={thinking}>Resign</button>
             </div>
           </div>
         )}
       </div>
+
+      {/* Options Menu Modal */}
+      {showOptionsMenu && (
+        <GameOptionsMenu
+          isOnlineGame={false}
+          onOfferDraw={handleOfferDraw}
+          onResign={handleResign}
+          onOpenTheme={() => setShowThemeModal(true)}
+          onClose={() => setShowOptionsMenu(false)}
+        />
+      )}
 
       {/* Theme Selector Modal */}
       {showThemeModal && (
