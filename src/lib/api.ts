@@ -3,6 +3,8 @@ import {
   signInWithEmailAndPassword,
   signOut,
   onAuthStateChanged,
+  signInWithPopup,
+  GoogleAuthProvider,
   type User,
 } from 'firebase/auth';
 import {
@@ -66,6 +68,32 @@ export async function login(email: string, password: string): Promise<UserProfil
   const auth = getFirebaseAuth();
   const cred = await signInWithEmailAndPassword(auth, email, password);
   return getProfileById(cred.user.uid);
+}
+
+export async function loginWithGoogle(): Promise<UserProfile> {
+  const auth = getFirebaseAuth();
+  const db = getFirebaseDb();
+  const provider = new GoogleAuthProvider();
+  const cred = await signInWithPopup(auth, provider);
+  const uid = cred.user.uid;
+
+  // Check if profile exists already
+  const snap = await getDoc(doc(db, 'users', uid));
+  if (snap.exists()) return snap.data() as UserProfile;
+
+  // First time — create profile using Google display name
+  const rawName = cred.user.displayName?.replace(/\s+/g, '').toLowerCase() || `player${uid.slice(0,6)}`;
+  const username = rawName.slice(0, 20);
+  const profile: UserProfile = {
+    uid,
+    username,
+    email: cred.user.email || '',
+    wins: 0, losses: 0, draws: 0, gamesPlayed: 0,
+    createdAt: new Date().toISOString(),
+  };
+  await setDoc(doc(db, 'users', uid), profile);
+  await setDoc(doc(db, 'usernames', username), { uid });
+  return profile;
 }
 
 export async function logout() {
