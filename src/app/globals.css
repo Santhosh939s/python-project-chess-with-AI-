@@ -168,6 +168,75 @@ body::before {
   padding: 0 0.25rem;
 }
 
+/* ─── Game Board Section & Player Bars ─── */
+.game-board-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.player-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: min(540px, calc(100vw - 1rem));
+  background: var(--bg-glass);
+  border: 1px solid var(--border-glass);
+  backdrop-filter: blur(12px);
+  padding: 0.5rem 0.85rem;
+  border-radius: var(--radius);
+}
+
+.player-bar-info {
+  display: flex;
+  flex-direction: column;
+}
+
+.player-bar-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.player-bar-rank {
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.chess-clock {
+  font-family: 'Courier New', monospace;
+  font-size: 1.15rem;
+  font-weight: 900;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--text-secondary);
+  padding: 0.25rem 0.75rem;
+  border-radius: 8px;
+  letter-spacing: 0.05em;
+  transition: all 0.2s ease;
+}
+
+.chess-clock.active {
+  background: rgba(118, 150, 86, 0.25);
+  border-color: rgba(118, 150, 86, 0.6);
+  color: #eeeed2;
+  box-shadow: 0 0 12px rgba(118, 150, 86, 0.3);
+}
+
+.chess-clock.low-time {
+  background: rgba(239, 68, 68, 0.25) !important;
+  border-color: rgba(239, 68, 68, 0.8) !important;
+  color: #f87171 !important;
+  animation: pulse-red 1s infinite;
+}
+
+@keyframes pulse-red {
+  0%, 100% { box-shadow: 0 0 10px rgba(239, 68, 68, 0.6); }
+  50% { box-shadow: 0 0 20px rgba(239, 68, 68, 1); }
+}
+
 .coord-rank {
   display: flex;
   flex-direction: column;

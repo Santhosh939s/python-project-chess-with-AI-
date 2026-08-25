@@ -11,6 +11,8 @@ interface Props {
   onBack: () => void;
 }
 
+const INITIAL_TIME = 600; // 10 minutes in seconds
+
 export default function AIGame({ user, onGameEnd, onBack }: Props) {
   const chessRef = useRef(new Chess());
   const [fen, setFen] = useState(chessRef.current.fen());
@@ -23,9 +25,50 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
   const [checkSquare, setCheckSquare] = useState<string | null>(null);
   const historyEndRef = useRef<HTMLDivElement>(null);
 
+  // 10-Minute Clocks (in seconds)
+  const [whiteTime, setWhiteTime] = useState(INITIAL_TIME);
+  const [blackTime, setBlackTime] = useState(INITIAL_TIME);
+
   const tier = getTier(user?.wins ?? 0);
   const aiDepth = tier.depth;
   const aiColor = playerColor === 'w' ? 'b' : 'w';
+
+  // ── Timer Effect ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (gameOver) return;
+
+    const timer = setInterval(() => {
+      const turn = chessRef.current.turn();
+      if (turn === 'w') {
+        setWhiteTime(prev => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            handleTimeout('w');
+            return 0;
+          }
+          return prev - 1;
+        });
+      } else {
+        setBlackTime(prev => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            handleTimeout('b');
+            return 0;
+          }
+          return prev - 1;
+        });
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [gameOver]);
+
+  function handleTimeout(timedOutColor: 'w' | 'b') {
+    const playerWon = timedOutColor === aiColor;
+    const result = playerWon ? 'win' : 'loss';
+    setStatus(`Time's up! ${playerWon ? 'You win on time! 🏆' : 'AI wins on time!'}`);
+    setGameOver(result);
+  }
 
   function findKingSquare(chess: Chess, color: 'w' | 'b'): string | null {
     const board = chess.board();
@@ -61,24 +104,31 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
     }
   }
 
-  const makeAIMove = useCallback(async (chess: Chess) => {
+  const makeAIMove = useCallback(() => {
+    const chess = chessRef.current;
     if (chess.isGameOver() || chess.turn() !== aiColor) return;
+
     setThinking(true);
-    await new Promise(r => setTimeout(r, 250));
-    const move = getAIMove(chess, aiDepth);
-    if (move) {
-      chess.move(move);
-      setLastMove({ from: move.from, to: move.to });
-      setMoveHistory(chess.history());
-      setFen(chess.fen());
-      updateStatus(chess);
-    }
-    setThinking(false);
+    setTimeout(() => {
+      const move = getAIMove(chess, aiDepth);
+      if (move) {
+        chess.move(move);
+        setLastMove({ from: move.from, to: move.to });
+        setMoveHistory(chess.history());
+        setFen(chess.fen());
+        updateStatus(chess);
+      }
+      setThinking(false);
+    }, 300);
   }, [aiColor, aiDepth]);
 
+  // Initial check if AI plays White (goes first)
   useEffect(() => {
-    if (playerColor === 'b') makeAIMove(chessRef.current);
-    else updateStatus(chessRef.current);
+    if (playerColor === 'b') {
+      makeAIMove();
+    } else {
+      updateStatus(chessRef.current);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -86,7 +136,7 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
     historyEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [moveHistory]);
 
-  // When game ends, call parent (which updates Firebase stats)
+  // Notify parent on game over
   useEffect(() => {
     if (gameOver) onGameEnd(gameOver);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -94,12 +144,28 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
 
   function handlePlayerMove(move: any) {
     const chess = chessRef.current;
-    setLastMove({ from: move.from, to: move.to });
-    setMoveHistory(chess.history());
-    setFen(chess.fen());
-    updateStatus(chess);
-    if (!chess.isGameOver()) makeAIMove(chess);
+    // Execute move on master chessRef
+    const executed = chess.move({ from: move.from, to: move.to, promotion: move.promotion });
+    if (executed) {
+      setLastMove({ from: executed.from, to: executed.to });
+      setMoveHistory(chess.history());
+      setFen(chess.fen());
+      updateStatus(chess);
+      if (!chess.isGameOver()) {
+        makeAIMove();
+      }
+    }
   }
+
+  function formatTime(seconds: number) {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  }
+
+  const userTime  = playerColor === 'w' ? whiteTime : blackTime;
+  const aiTime    = playerColor === 'w' ? blackTime : whiteTime;
+  const isUserTurn = chessRef.current.turn() === playerColor;
 
   const colorLabel = playerColor === 'w' ? '⬜ White' : '⬛ Black';
   const aiLabel    = playerColor === 'w' ? '⬛ Black' : '⬜ White';
@@ -109,34 +175,47 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
 
   return (
     <div className="app-content">
-      <ChessBoard
-        fen={fen}
-        playerColor={playerColor}
-        onMove={handlePlayerMove}
-        disabled={thinking || !!gameOver || chessRef.current.turn() !== playerColor}
-        lastMove={lastMove}
-        checkSquare={checkSquare}
-      />
-
-      <div className="side-panel">
-        {/* Player info */}
-        <div className="glass-card status-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-            <div>
-              <div className="controls-title">You · {colorLabel}</div>
-              <div style={{ fontWeight: 700, fontSize: '1rem' }}>{user?.username ?? 'Guest'}</div>
-              <div style={{ fontSize: '0.75rem', color: tier.color, fontWeight: 600 }}>
-                {tier.emoji} {tier.name} · {user?.wins ?? 0}W {user?.losses ?? 0}L
-              </div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div className="controls-title">AI · {aiLabel}</div>
-              <span style={{ fontSize: '0.75rem', background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.3)', color: '#a78bfa', padding: '2px 8px', borderRadius: 6, fontWeight: 600, display: 'inline-block', marginTop: 4 }}>
-                Depth {aiDepth}
-              </span>
+      <div className="game-board-section">
+        {/* Top Clock & AI Info Bar */}
+        <div className="player-bar opponent-bar">
+          <div className="player-bar-info">
+            <div className="player-bar-name">🤖 AI ({aiLabel})</div>
+            <div className="player-bar-rank" style={{ color: tier.color }}>
+              Depth {aiDepth} · {tier.name} Level
             </div>
           </div>
+          <div className={`chess-clock ${!isUserTurn && !gameOver ? 'active' : ''} ${aiTime < 30 ? 'low-time' : ''}`}>
+            ⏱️ {formatTime(aiTime)}
+          </div>
+        </div>
 
+        {/* Board */}
+        <ChessBoard
+          fen={fen}
+          playerColor={playerColor}
+          onMove={handlePlayerMove}
+          disabled={thinking || !!gameOver || !isUserTurn}
+          lastMove={lastMove}
+          checkSquare={checkSquare}
+        />
+
+        {/* Bottom Clock & User Info Bar */}
+        <div className="player-bar user-bar">
+          <div className="player-bar-info">
+            <div className="player-bar-name">👤 {user?.username ?? 'Player'} ({colorLabel})</div>
+            <div className="player-bar-rank" style={{ color: tier.color }}>
+              {tier.emoji} {tier.name} · {user?.wins ?? 0}W {user?.losses ?? 0}L
+            </div>
+          </div>
+          <div className={`chess-clock ${isUserTurn && !gameOver ? 'active' : ''} ${userTime < 30 ? 'low-time' : ''}`}>
+            ⏱️ {formatTime(userTime)}
+          </div>
+        </div>
+      </div>
+
+      <div className="side-panel">
+        {/* Status Card */}
+        <div className="glass-card status-card">
           <div className={`status-message ${chessRef.current.inCheck() ? 'check' : gameOver === 'win' ? 'win' : ''}`}>
             {status}
           </div>
@@ -144,7 +223,7 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
           {thinking && (
             <div className="ai-thinking">
               <div className="thinking-dots"><span/><span/><span/></div>
-              AI is calculating…
+              AI is calculating move…
             </div>
           )}
 
@@ -154,7 +233,7 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
                 {gameOver === 'win' ? '🏆 You Win!' : gameOver === 'loss' ? '😔 AI Wins' : '🤝 Draw'}
               </div>
               <div className="game-over-result">
-                {gameOver === 'win' ? '+1 Win — rank may increase!' : gameOver === 'draw' ? 'Good game!' : 'Better luck next time!'}
+                {gameOver === 'win' ? '+1 Win — rank increased!' : gameOver === 'draw' ? 'Good game!' : 'Better luck next time!'}
               </div>
               <button className="btn btn-primary" style={{ marginTop: 12, width: '100%' }} onClick={onBack}>
                 Back to Menu
