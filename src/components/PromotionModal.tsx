@@ -1,4 +1,5 @@
 'use client';
+import ChessPiece from './ChessPiece';
 
 interface Props {
   color: 'w' | 'b';
@@ -6,19 +7,17 @@ interface Props {
 }
 
 const PIECES = [
-  { type: 'q', label: 'Queen',  symbol: '♛' },
-  { type: 'r', label: 'Rook',   symbol: '♜' },
-  { type: 'b', label: 'Bishop', symbol: '♝' },
-  { type: 'n', label: 'Knight', symbol: '♞' },
+  { type: 'q', label: 'Queen' },
+  { type: 'r', label: 'Rook' },
+  { type: 'b', label: 'Bishop' },
+  { type: 'n', label: 'Knight' },
 ];
 
 export default function PromotionModal({ color, onSelect }: Props) {
-  const whiteSymbols: Record<string,string> = { q:'♕', r:'♖', b:'♗', n:'♘' };
-
   return (
     <div className="modal-overlay">
       <div className="modal-card">
-        <p className="modal-title">Choose promotion piece</p>
+        <p className="modal-title">Choose Promotion Piece</p>
         <div className="promotion-pieces">
           {PIECES.map(p => (
             <button
@@ -28,7 +27,7 @@ export default function PromotionModal({ color, onSelect }: Props) {
               aria-label={p.label}
               title={p.label}
             >
-              {color === 'w' ? whiteSymbols[p.type] : p.symbol}
+              <ChessPiece type={p.type} color={color} />
             </button>
           ))}
         </div>

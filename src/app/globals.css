@@ -26,18 +26,18 @@
   --text-secondary: #94a3b8;
   --text-muted: #475569;
 
-  --board-light: #e8d5b7;
-  --board-dark: #b58863;
-  --board-light-hover: #f0dfc8;
-  --board-dark-hover: #c8976b;
-  --board-selected: rgba(139,92,246,0.6);
-  --board-legal: rgba(139,92,246,0.3);
-  --board-last-move-light: rgba(245,158,11,0.4);
-  --board-last-move-dark: rgba(245,158,11,0.5);
-  --board-check: rgba(244,63,94,0.7);
+  --board-light: #eeeed2;
+  --board-dark: #769656;
+  --board-light-hover: #f5f5dc;
+  --board-dark-hover: #83a562;
+  --board-selected: #f7f769;
+  --board-legal: rgba(0,0,0,0.18);
+  --board-last-move-light: #baca44;
+  --board-last-move-dark: #baca44;
+  --board-check: radial-gradient(circle, rgba(255,0,0,0.85) 0%, rgba(220,38,38,0.5) 70%, transparent 100%);
 
-  --shadow-glow: 0 0 40px rgba(139,92,246,0.15);
-  --shadow-board: 0 25px 80px rgba(0,0,0,0.6);
+  --shadow-glow: 0 0 40px rgba(118,150,86,0.2);
+  --shadow-board: 0 25px 80px rgba(0,0,0,0.7);
   --radius: 12px;
   --radius-lg: 20px;
   --transition: 0.2s cubic-bezier(0.4,0,0.2,1);
@@ -193,44 +193,67 @@ body::before {
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all var(--transition);
+  transition: background 0.15s ease;
   user-select: none;
 }
 
-.square.light { background: var(--board-light); }
-.square.dark  { background: var(--board-dark); }
+.square.light { background: var(--board-light); color: var(--board-dark); }
+.square.dark  { background: var(--board-dark); color: var(--board-light); }
 .square.light:hover { background: var(--board-light-hover); }
 .square.dark:hover  { background: var(--board-dark-hover); }
 
 .square.selected {
   background: var(--board-selected) !important;
-  box-shadow: inset 0 0 0 3px rgba(139,92,246,0.8);
 }
 
+/* Corner Coordinates inside boundary squares */
+.sq-coord {
+  position: absolute;
+  font-weight: 700;
+  font-size: 0.72rem;
+  line-height: 1;
+  pointer-events: none;
+  user-select: none;
+  font-family: 'Inter', sans-serif;
+}
+
+.sq-rank {
+  top: 4px;
+  left: 4px;
+}
+
+.sq-file {
+  bottom: 4px;
+  right: 4px;
+}
+
+.dark-text { color: #769656; }
+.light-text { color: #eeeed2; }
+
+/* Move Hints & Highlights */
 .square.legal-move::after {
   content: '';
   position: absolute;
-  width: 35%;
-  height: 35%;
+  width: 30%;
+  height: 30%;
   border-radius: 50%;
-  background: rgba(0,0,0,0.25);
+  background: rgba(0,0,0,0.18);
   pointer-events: none;
+  z-index: 5;
 }
 
 .square.legal-capture::after {
   content: '';
   position: absolute;
   inset: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: inset 0 0 0 4px rgba(0,0,0,0.25);
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 6px rgba(0,0,0,0.18);
   pointer-events: none;
+  z-index: 5;
 }
 
-.square.last-move-from.light { background: var(--board-last-move-light); }
-.square.last-move-from.dark  { background: var(--board-last-move-dark); }
-.square.last-move-to.light   { background: var(--board-last-move-light); }
-.square.last-move-to.dark    { background: var(--board-last-move-dark); }
+.square.last-move-from { background: var(--board-last-move-light) !important; }
+.square.last-move-to   { background: var(--board-last-move-dark) !important; }
 
 .square.in-check {
   background: var(--board-check) !important;
@@ -238,32 +261,40 @@ body::before {
 }
 
 @keyframes pulse-check {
-  0%, 100% { background: rgba(244,63,94,0.7); }
-  50%       { background: rgba(244,63,94,0.9); }
+  0%, 100% { filter: drop-shadow(0 0 10px rgba(239,68,68,0.8)); }
+  50%       { filter: drop-shadow(0 0 20px rgba(239,68,68,1)); }
 }
 
-/* ─── Piece ─── */
-.piece {
-  width: 88%;
-  height: 88%;
-  object-fit: contain;
+/* ─── Piece SVG ─── */
+.piece-container {
+  width: 90%;
+  height: 90%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2;
   transition: transform 0.15s ease;
-  filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
   pointer-events: none;
   user-select: none;
 }
 
-.square:hover .piece {
-  transform: scale(1.08);
+.piece-svg {
+  width: 100%;
+  height: 100%;
+  filter: drop-shadow(0 3px 5px rgba(0,0,0,0.35));
 }
 
-.square.selected .piece {
-  transform: scale(1.12);
+.square:hover .piece-container {
+  transform: scale(1.06);
+}
+
+.square.selected .piece-container {
+  transform: scale(1.1);
 }
 
 .piece-dragging {
   transform: scale(1.15);
-  filter: drop-shadow(0 8px 16px rgba(0,0,0,0.6));
+  filter: drop-shadow(0 8px 16px rgba(0,0,0,0.5));
 }
 
 /* ─── Side Panel ─── */

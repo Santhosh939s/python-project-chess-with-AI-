@@ -10,7 +10,7 @@ const RANKS = ['8','7','6','5','4','3','2','1'];
 interface Props {
   fen?: string;
   playerColor: 'w' | 'b'; // which side the user controls
-  onMove?: (move: any) => void; // called when a move is made (for AI / online)
+  onMove?: (move: any) => void; // called when a move is made
   disabled?: boolean;
   lastMove?: { from: string; to: string } | null;
   checkSquare?: string | null;
@@ -106,68 +106,68 @@ export default function ChessBoard({ fen, playerColor, onMove, disabled = false,
   return (
     <>
       <div className="board-wrapper">
-        {/* Rank labels */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-          <div className="coord-rank">
-            {ranks.map(r => (
-              <span key={r} className="coord-label">{r}</span>
-            ))}
-          </div>
+        <div className="board-container">
+          <div className="board-grid">
+            {ranks.map((rank, ri) =>
+              files.map((file, fi) => {
+                const sq = `${file}${rank}`;
+                const isLight = (ri + fi) % 2 === 0;
+                const rankIdx = 8 - parseInt(rank);
+                const fileIdx = file.charCodeAt(0) - 97;
+                const piece = board[rankIdx]?.[fileIdx];
 
-          <div className="board-container">
-            <div className="board-grid">
-              {ranks.map((rank, ri) =>
-                files.map((file, fi) => {
-                  const sq = `${file}${rank}`;
-                  const isLight = (ri + fi) % 2 === 0;
-                  const rankIdx = 8 - parseInt(rank);
-                  const fileIdx = file.charCodeAt(0) - 97;
-                  const piece = board[rankIdx]?.[fileIdx];
+                const isSelected = selected === sq;
+                const isLegal = legalSquares.includes(sq);
+                const isCapture = legalCaptures.includes(sq);
+                const isLastFrom = lastMove?.from === sq;
+                const isLastTo = lastMove?.to === sq;
+                const isCheck = checkSquare === sq;
 
-                  const isSelected = selected === sq;
-                  const isLegal = legalSquares.includes(sq);
-                  const isCapture = legalCaptures.includes(sq);
-                  const isLastFrom = lastMove?.from === sq;
-                  const isLastTo = lastMove?.to === sq;
-                  const isCheck = checkSquare === sq;
+                // Show coordinates inside boundary squares like Chess.com
+                const showRankLabel = fi === 0;
+                const showFileLabel = ri === 7;
 
-                  let squareClass = `square ${isLight ? 'light' : 'dark'}`;
-                  if (isSelected) squareClass += ' selected';
-                  if (isCheck) squareClass += ' in-check';
-                  else if (isLastFrom) squareClass += ' last-move-from';
-                  else if (isLastTo)   squareClass += ' last-move-to';
-                  if (isLegal && !isCapture) squareClass += ' legal-move';
-                  if (isCapture)             squareClass += ' legal-capture';
+                let squareClass = `square ${isLight ? 'light' : 'dark'}`;
+                if (isSelected) squareClass += ' selected';
+                if (isCheck) squareClass += ' in-check';
+                else if (isLastFrom) squareClass += ' last-move-from';
+                else if (isLastTo)   squareClass += ' last-move-to';
+                if (isLegal && !isCapture) squareClass += ' legal-move';
+                if (isCapture)             squareClass += ' legal-capture';
 
-                  return (
-                    <div
-                      key={sq}
-                      id={`sq-${sq}`}
-                      className={squareClass}
-                      onClick={() => selectSquare(sq)}
-                      role="button"
-                      aria-label={sq}
-                    >
-                      {piece && (
-                        <ChessPiece
-                          type={piece.type}
-                          color={piece.color}
-                        />
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </div>
+                return (
+                  <div
+                    key={sq}
+                    id={`sq-${sq}`}
+                    className={squareClass}
+                    onClick={() => selectSquare(sq)}
+                    role="button"
+                    aria-label={sq}
+                  >
+                    {/* Corner Rank Label */}
+                    {showRankLabel && (
+                      <span className={`sq-coord sq-rank ${isLight ? 'dark-text' : 'light-text'}`}>
+                        {rank}
+                      </span>
+                    )}
 
-        {/* File labels */}
-        <div style={{ display: 'flex', marginLeft: '1.4rem' }}>
-          <div className="coord-file">
-            {files.map(f => (
-              <span key={f} className="coord-label">{f}</span>
-            ))}
+                    {/* Corner File Label */}
+                    {showFileLabel && (
+                      <span className={`sq-coord sq-file ${isLight ? 'dark-text' : 'light-text'}`}>
+                        {file}
+                      </span>
+                    )}
+
+                    {piece && (
+                      <ChessPiece
+                        type={piece.type}
+                        color={piece.color}
+                      />
+                    )}
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
       </div>
