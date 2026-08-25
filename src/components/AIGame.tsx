@@ -243,7 +243,9 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
         {/* Top Clock & AI Info Bar */}
         <div className="player-bar opponent-bar">
           <div className="player-bar-info">
-            <div className="player-bar-name">🤖 AI ({aiLabel})</div>
+            <div className="player-bar-name">
+              🤖 AI ({aiLabel}) {thinking && <span style={{ fontSize: '0.72rem', color: '#93c5fd', marginLeft: 6 }}>· Thinking…</span>}
+            </div>
             <div className="player-bar-rank" style={{ color: tier.color }}>
               Depth {aiDepth} · {tier.name} Level
             </div>
@@ -304,7 +306,7 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
           </div>
         </div>
 
-        {/* Bottom Mobile App Action Bar */}
+        {/* Bottom Mobile & Desktop App Action Bar */}
         <div className="bottom-app-bar">
           <button className="bottom-action-btn" onClick={() => setShowOptionsMenu(true)} title="Game Options">
             <span className="bottom-btn-icon">⚙️</span>
@@ -346,46 +348,25 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
         </div>
       </div>
 
-      <div className="side-panel">
-        {/* Status Card */}
-        <div className="glass-card status-card">
-          <div className={`status-message ${chessRef.current.inCheck() ? 'check' : gameOver === 'win' ? 'win' : ''}`}>
-            {status}
+      {/* Clean Game Over Modal Popup */}
+      {gameOver && (
+        <div className="modal-overlay">
+          <div className="modal-card" style={{ maxWidth: 380, textAlign: 'center' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>
+              {gameOver === 'win' ? '🏆' : gameOver === 'loss' ? '😔' : '🤝'}
+            </div>
+            <h2 className="modal-title" style={{ fontSize: '1.4rem' }}>
+              {gameOver === 'win' ? 'Victory!' : gameOver === 'loss' ? 'Game Over' : 'Draw Match'}
+            </h2>
+            <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', margin: '0.75rem 0 1.25rem' }}>
+              {status}
+            </p>
+            <button className="btn btn-primary" style={{ width: '100%' }} onClick={onBack}>
+              Return to Menu
+            </button>
           </div>
-
-          {thinking && (
-            <div className="ai-thinking">
-              <div className="thinking-dots"><span/><span/><span/></div>
-              AI is calculating move…
-            </div>
-          )}
-
-          {gameOver && (
-            <div className="game-over-banner">
-              <div className="game-over-title">
-                {gameOver === 'win' ? '🏆 You Win!' : gameOver === 'loss' ? '😔 AI Wins' : '🤝 Draw'}
-              </div>
-              <div className="game-over-result">
-                {gameOver === 'win' ? '+1 Win — rank increased!' : gameOver === 'draw' ? 'Draw match — 0 score change!' : 'Resigned / Lost match.'}
-              </div>
-              <button className="btn btn-primary" style={{ marginTop: 12, width: '100%' }} onClick={onBack}>
-                Back to Menu
-              </button>
-            </div>
-          )}
         </div>
-
-        {!gameOver && (
-          <div className="glass-card controls-card">
-            <div className="controls-title">Controls</div>
-            <div className="btn-row">
-              <button className="btn btn-secondary" onClick={() => setShowOptionsMenu(true)}>⚙️ Options</button>
-              <button className="btn btn-secondary" onClick={() => setShowThemeModal(true)}>🎨 Board Color</button>
-              <button className="btn btn-danger" onClick={handleResign} disabled={thinking}>Resign</button>
-            </div>
-          </div>
-        )}
-      </div>
+      )}
 
       {/* Options Menu Modal */}
       {showOptionsMenu && (

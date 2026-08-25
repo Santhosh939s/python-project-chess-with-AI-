@@ -508,6 +508,27 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
           onSelectMove={setViewIndex}
         />
 
+        {/* Draw Offer Floating Alert */}
+        {drawOffer && (
+          <div style={{
+            background: 'rgba(245, 158, 11, 0.2)',
+            border: '1px solid rgba(245, 158, 11, 0.5)',
+            borderRadius: 12,
+            padding: '0.65rem 1rem',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            width: 'min(540px, calc(100vw - 1rem))',
+            color: '#fef08a'
+          }}>
+            <span style={{ fontWeight: 700, fontSize: '0.88rem' }}>🤝 Opponent offered a draw</span>
+            <div style={{ display: 'flex', gap: '0.5rem' }}>
+              <button className="btn btn-primary" onClick={acceptDraw} style={{ padding: '0.25rem 0.65rem', fontSize: '0.78rem' }}>Accept</button>
+              <button className="btn btn-secondary" onClick={declineDraw} style={{ padding: '0.25rem 0.65rem', fontSize: '0.78rem' }}>Decline</button>
+            </div>
+          </div>
+        )}
+
         {/* Opponent Bar */}
         <div className="player-bar opponent-bar">
           <div className="player-bar-info">
@@ -570,7 +591,7 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
           </div>
         </div>
 
-        {/* Bottom Mobile App Action Bar */}
+        {/* Bottom Mobile & Desktop App Action Bar */}
         <div className="bottom-app-bar">
           <button className="bottom-action-btn" onClick={() => setShowOptionsMenu(true)} title="Game Options">
             <span className="bottom-btn-icon">⚙️</span>
@@ -612,46 +633,25 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
         </div>
       </div>
 
-      <div className="side-panel">
-        <div className="glass-card status-card">
-          <div className={`status-message ${chess.inCheck() ? 'check' : ''}`}>
-            {isMyTurn && !gameOver ? '🟢 Your turn' : !gameOver ? '⏳ Opponent thinking…' : ''} {status}
+      {/* Clean Game Over Modal Popup */}
+      {gameOver && (
+        <div className="modal-overlay">
+          <div className="modal-card" style={{ maxWidth: 380, textAlign: 'center' }}>
+            <div style={{ fontSize: '2.5rem', marginBottom: '0.5rem' }}>
+              {gameOver === 'win' ? '🏆' : gameOver === 'loss' ? '😔' : '🤝'}
+            </div>
+            <h2 className="modal-title" style={{ fontSize: '1.4rem' }}>
+              {gameOver === 'win' ? 'Victory!' : gameOver === 'loss' ? 'Game Over' : 'Draw Match'}
+            </h2>
+            <p style={{ fontSize: '0.88rem', color: 'var(--text-secondary)', margin: '0.75rem 0 1.25rem' }}>
+              {status}
+            </p>
+            <button className="btn btn-primary" style={{ width: '100%' }} onClick={onBack}>
+              Return to Menu
+            </button>
           </div>
-
-          {drawOffer && (
-            <div style={{ background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.3)', borderRadius: 8, padding: '0.75rem', marginTop: '0.5rem' }}>
-              <p style={{ fontSize: '0.85rem', marginBottom: 8, fontWeight: 700, color: '#fcd34d' }}>🤝 Opponent offers a draw</p>
-              <div className="btn-row">
-                <button className="btn btn-secondary" onClick={acceptDraw}>Accept Draw</button>
-                <button className="btn btn-danger" onClick={declineDraw}>Decline</button>
-              </div>
-            </div>
-          )}
-
-          {gameOver && (
-            <div className="game-over-banner">
-              <div className="game-over-title">
-                {gameOver === 'win' ? '🏆 You Win!' : gameOver === 'loss' ? '😔 You Lose' : '🤝 Draw'}
-              </div>
-              <div className="game-over-result">
-                {gameOver === 'draw' ? 'Draw match — 0 score change on both sides' : gameOver === 'win' ? '+1 Win — rank increased!' : 'Match forfeited / lost.'}
-              </div>
-              <button className="btn btn-primary" style={{ marginTop: 12, width: '100%' }} onClick={onBack}>Back to Home</button>
-            </div>
-          )}
         </div>
-
-        {!gameOver && (
-          <div className="glass-card controls-card">
-            <div className="controls-title">Controls</div>
-            <div className="btn-row">
-              <button className="btn btn-secondary" onClick={() => setShowOptionsMenu(true)}>⚙️ Options</button>
-              <button className="btn btn-secondary" onClick={() => setShowThemeModal(true)}>🎨 Theme</button>
-              <button className="btn btn-danger" onClick={resign}>🏳️ Resign</button>
-            </div>
-          </div>
-        )}
-      </div>
+      )}
 
       {/* Options Menu Modal */}
       {showOptionsMenu && (
