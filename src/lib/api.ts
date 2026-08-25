@@ -276,8 +276,8 @@ export async function enterMatchmakingQueue(
       const data = typeof d.data === 'function' ? d.data() : d;
       const age = Date.now() - (data?.createdAt || 0);
 
-      // Ignore expired entries (> 20s old) without deleting (prevents security rule permission errors)
-      if (!data || !data.uid || age > 20000) continue;
+      // Ignore invalid entries
+      if (!data || !data.uid || !data.peerId) continue;
 
       // Filter for valid active waiting players (excluding self)
       if (data.uid !== myUid && data.status === 'waiting') {
