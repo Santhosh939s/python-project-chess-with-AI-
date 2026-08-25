@@ -292,27 +292,14 @@ export async function enterMatchmakingQueue(
 
     if (bestMatch && !matched) {
       matched = true;
-      try {
-        // Update target player's doc to matched
-        await updateDoc(doc(db, 'matchmaking_queue', bestMatch.uid), {
-          status: 'matched',
-          matchedPeerId: peerId,
-          matchedName: user?.username || 'Player',
-          matchedRole: 'guest',
-        });
+      // Delete own queue doc so no one else picks us
+      deleteDoc(myDocRef).catch(() => {});
 
-        // Delete own queue doc
-        deleteDoc(myDocRef).catch(() => {});
-
-        onMatched({
-          peerId: bestMatch.peerId,
-          role: 'guest',
-          oppName: bestMatch.username || 'Opponent',
-        });
-      } catch (e) {
-        matched = false;
-        console.warn('Match update error:', e);
-      }
+      onMatched({
+        peerId: bestMatch.peerId,
+        role: 'guest',
+        oppName: bestMatch.username || 'Opponent',
+      });
     }
   }
 
@@ -323,28 +310,6 @@ export async function enterMatchmakingQueue(
       if (!matched) checkForOpponent(snapshot.docs);
     },
     (err) => console.warn('Collection snapshot warning:', err)
-  );
-
-  // 2. Listen specifically to own document for when another player matches us
-  const unsubMyDoc = onSnapshot(
-    myDocRef,
-    (docSnap) => {
-      if (docSnap.exists() && !matched) {
-        const data = docSnap.data();
-        if (data.status === 'matched' && data.matchedPeerId) {
-          matched = true;
-
-          onMatched({
-            peerId: data.matchedPeerId,
-            role: 'host',
-            oppName: data.matchedName || 'Opponent',
-          });
-
-          deleteDoc(myDocRef).catch(() => {});
-        }
-      }
-    },
-    (err) => console.warn('MyDoc snapshot warning:', err)
   );
 
   // 3. Register self in queue as 'waiting'
@@ -368,7 +333,6 @@ export async function enterMatchmakingQueue(
   return () => {
     matched = true;
     try { unsubCollection(); } catch {}
-    try { unsubMyDoc(); } catch {}
     deleteDoc(myDocRef).catch(() => {});
   };
 }

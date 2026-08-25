@@ -191,6 +191,7 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
 
     peer.on('connection', (conn: any) => {
       if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
+      if (user?.uid) leaveMatchmakingQueue(user.uid);
       connRef.current = conn;
       setupConnHandlers(conn, 'host');
     });
