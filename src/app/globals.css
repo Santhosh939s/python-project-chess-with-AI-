@@ -26,21 +26,63 @@
   --text-secondary: #94a3b8;
   --text-muted: #475569;
 
-  --board-light: #eeeed2;
-  --board-dark: #769656;
-  --board-light-hover: #f5f5dc;
-  --board-dark-hover: #83a562;
-  --board-selected: #f7f769;
-  --board-legal: rgba(0,0,0,0.18);
-  --board-last-move-light: #baca44;
-  --board-last-move-dark: #baca44;
-  --board-check: radial-gradient(circle, rgba(255,0,0,0.85) 0%, rgba(220,38,38,0.5) 70%, transparent 100%);
+  /* Default Invented Color Palette: Cyber Mint & Obsidian Slate */
+  --board-light: #2dd4bf;
+  --board-dark: #0f172a;
+  --board-light-hover: #5eead4;
+  --board-dark-hover: #1e293b;
+  --board-selected: #f59e0b;
+  --board-legal: rgba(0,0,0,0.22);
+  --board-last-move-light: #f59e0b;
+  --board-last-move-dark: #d97706;
+  --board-check: radial-gradient(circle, rgba(244,63,94,0.95) 0%, rgba(225,29,72,0.6) 70%, transparent 100%);
+  --sq-light-text: #0f172a;
+  --sq-dark-text: #2dd4bf;
 
-  --shadow-glow: 0 0 40px rgba(118,150,86,0.2);
-  --shadow-board: 0 25px 80px rgba(0,0,0,0.7);
+  --shadow-glow: 0 0 40px rgba(45,212,191,0.25);
+  --shadow-board: 0 25px 80px rgba(0,0,0,0.85);
   --radius: 12px;
   --radius-lg: 20px;
   --transition: 0.2s cubic-bezier(0.4,0,0.2,1);
+}
+
+/* Theme 1: Cyber Mint & Obsidian (Invented Default) */
+[data-theme="cyber"] {
+  --board-light: #2dd4bf;
+  --board-dark: #0f172a;
+  --board-light-hover: #5eead4;
+  --board-dark-hover: #1e293b;
+  --board-selected: #f59e0b;
+  --board-last-move-light: #f59e0b;
+  --board-last-move-dark: #d97706;
+  --sq-light-text: #0f172a;
+  --sq-dark-text: #2dd4bf;
+}
+
+/* Theme 2: Royal Sapphire & Pearl Gold */
+[data-theme="sapphire"] {
+  --board-light: #fef3c7;
+  --board-dark: #1e1b4b;
+  --board-light-hover: #fffbeb;
+  --board-dark-hover: #312e81;
+  --board-selected: #06b6d4;
+  --board-last-move-light: #06b6d4;
+  --board-last-move-dark: #0891b2;
+  --sq-light-text: #1e1b4b;
+  --sq-dark-text: #fef3c7;
+}
+
+/* Theme 3: Midnight Neon Amethyst */
+[data-theme="amethyst"] {
+  --board-light: #e9d5ff;
+  --board-dark: #3b0764;
+  --board-light-hover: #f3e8ff;
+  --board-dark-hover: #581c87;
+  --board-selected: #ff6b6b;
+  --board-last-move-light: #ec4899;
+  --board-last-move-dark: #be185d;
+  --sq-light-text: #3b0764;
+  --sq-dark-text: #e9d5ff;
 }
 
 html, body {
@@ -296,8 +338,8 @@ body::before {
   right: 4px;
 }
 
-.dark-text { color: #769656; }
-.light-text { color: #eeeed2; }
+.dark-text { color: var(--sq-light-text, #0f172a); }
+.light-text { color: var(--sq-dark-text, #2dd4bf); }
 
 /* Move Hints & Highlights */
 .square.legal-move::after {
@@ -886,4 +928,196 @@ body::before {
   .sq-coord {
     display: none; /* Hide edge letters on ultra-small screens to keep board uncluttered */
   }
+}
+
+/* ─── Top Move Ticker Bar (Chess.com Mobile App Layout) ─── */
+.top-move-ticker-bar {
+  width: min(540px, calc(100vw - 1rem));
+  background: rgba(15, 23, 42, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(16px);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.6rem;
+  margin-bottom: 0.25rem;
+}
+
+.ticker-scroll {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: none; /* Hide scrollbar for clean app feel */
+  -ms-overflow-style: none;
+}
+
+.ticker-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.ticker-empty {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 0.2rem 0.4rem;
+}
+
+.ticker-pair {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.ticker-num {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  font-family: 'Courier New', monospace;
+}
+
+.ticker-chip {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 6px;
+  padding: 0.2rem 0.5rem;
+  color: #f1f5f9;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.ticker-chip:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.ticker-chip.active {
+  background: var(--board-light) !important;
+  color: var(--board-dark) !important;
+  border-color: var(--board-light) !important;
+  font-weight: 800;
+  box-shadow: 0 0 10px rgba(45, 212, 191, 0.5);
+}
+
+.ticker-piece-icon {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.ticker-notation {
+  font-weight: 700;
+}
+
+/* ─── Bottom Mobile App Action Bar ─── */
+.bottom-app-bar {
+  width: min(540px, calc(100vw - 1rem));
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.35rem;
+}
+
+.bottom-action-btn {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  background: var(--bg-glass);
+  border: 1px solid var(--border-glass);
+  border-radius: 10px;
+  padding: 0.45rem 0.2rem;
+  color: var(--text-primary);
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.bottom-action-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.bottom-action-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.bottom-btn-icon {
+  font-size: 1rem;
+}
+
+/* ─── Theme Selector Modal ─── */
+.theme-modal {
+  width: 90%;
+  max-width: 440px;
+}
+
+.theme-options-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.theme-option-card {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  padding: 0.85rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.theme-option-card:hover {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.theme-option-card.active {
+  border-color: var(--board-light);
+  background: rgba(45, 212, 191, 0.1);
+  box-shadow: 0 0 15px rgba(45, 212, 191, 0.2);
+}
+
+.theme-preview-swatch {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  flex-shrink: 0;
+}
+
+.theme-info {
+  flex: 1;
+}
+
+.theme-name {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--text-primary);
+}
+
+.theme-desc {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+.theme-check {
+  font-weight: 900;
+  color: var(--board-light);
+  font-size: 1.1rem;
 }

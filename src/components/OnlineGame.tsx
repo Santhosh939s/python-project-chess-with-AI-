@@ -2,6 +2,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { Chess, type Move } from 'chess.js';
 import ChessBoard from '@/components/ChessBoard';
+import TopMoveTicker from '@/components/TopMoveTicker';
+import ThemeSelector, { type BoardTheme } from '@/components/ThemeSelector';
 import { enterMatchmakingQueue, leaveMatchmakingQueue, getTier } from '@/lib/api';
 
 interface Props {
@@ -30,8 +32,25 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
   const [error, setError] = useState('');
   const [matchStatusText, setMatchStatusText] = useState('Searching for online players…');
 
+  // Board theme state
+  const [theme, setTheme] = useState<BoardTheme>('cyber');
+  const [showThemeModal, setShowThemeModal] = useState(false);
+
   // Move replay state (null = showing live board)
   const [viewIndex, setViewIndex] = useState<number | null>(null);
+
+  // Load persisted theme preference
+  useEffect(() => {
+    const saved = localStorage.getItem('chess_theme') as BoardTheme;
+    if (saved && ['cyber', 'sapphire', 'amethyst'].includes(saved)) {
+      setTheme(saved);
+    }
+  }, []);
+
+  function handleSelectTheme(newTheme: BoardTheme) {
+    setTheme(newTheme);
+    localStorage.setItem('chess_theme', newTheme);
+  }
 
   // 10-Minute Clocks
   const [whiteTime, setWhiteTime] = useState(INITIAL_TIME);
@@ -41,7 +60,6 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
   const peerRef = useRef<any>(null);
   const connRef = useRef<any>(null);
   const cancelMatchmakingRef = useRef<(() => void) | null>(null);
-  const historyEndRef = useRef<HTMLDivElement>(null);
 
   const tier = getTier(user?.wins ?? 0);
 
@@ -82,12 +100,6 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
     setStatus(iMyTurn ? "Time's up! You lost on time." : "Opponent's time ran out — You win! 🏆");
     onGameEnd(result);
   }
-
-  useEffect(() => {
-    if (viewIndex === null) {
-      historyEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [moveHistory, viewIndex]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -372,16 +384,6 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
     else setViewIndex(idx);
   }
 
-  const pairs: { w: Move; b?: Move; wIdx: number; bIdx?: number }[] = [];
-  for (let i = 0; i < moveHistory.length; i += 2) {
-    pairs.push({
-      w: moveHistory[i],
-      b: moveHistory[i + 1],
-      wIdx: i + 1,
-      bIdx: moveHistory[i + 1] ? i + 2 : undefined,
-    });
-  }
-
   const chess = chessRef.current;
   const isMyTurn = chess.turn() === playerColor;
 
@@ -490,8 +492,15 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
 
   // ── Active P2P Game ────────────────────────────────────────────────────────
   return (
-    <div className="app-content">
+    <div className="app-content" data-theme={theme}>
       <div className="game-board-section">
+        {/* Top Move Ticker Bar (Chess.com Mobile App Layout) */}
+        <TopMoveTicker
+          moveHistory={moveHistory}
+          activeMoveIndex={activeMoveIndex}
+          onSelectMove={setViewIndex}
+        />
+
         {/* Opponent Bar */}
         <div className="player-bar opponent-bar">
           <div className="player-bar-info">
@@ -509,21 +518,22 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
             background: 'rgba(59, 130, 246, 0.15)',
             border: '1px solid rgba(59, 130, 246, 0.4)',
             borderRadius: 10,
-            padding: '0.5rem 1rem',
-            margin: '0.4rem 0',
+            padding: '0.4rem 0.85rem',
+            margin: '0.2rem 0',
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'center',
-            fontSize: '0.85rem',
-            color: '#93c5fd'
+            fontSize: '0.82rem',
+            color: '#93c5fd',
+            width: 'min(540px, calc(100vw - 1rem))'
           }}>
-            <span>🔍 Viewing Past Move {viewIndex} / {moveHistory.length}</span>
+            <span>🔍 Past Move {viewIndex} / {moveHistory.length}</span>
             <button
               className="btn btn-secondary"
               onClick={() => setViewIndex(null)}
-              style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem' }}
+              style={{ padding: '0.2rem 0.5rem', fontSize: '0.75rem' }}
             >
-              ▶ Resume Live Game
+              ▶ Resume Live
             </button>
           </div>
         )}
@@ -551,6 +561,47 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
           <div className={`chess-clock ${isMyTurn && !gameOver ? 'active' : ''} ${myTime < 30 ? 'low-time' : ''}`}>
             ⏱️ {formatTime(myTime)}
           </div>
+        </div>
+
+        {/* Bottom Mobile App Action Bar (Matching User Screenshot Layout) */}
+        <div className="bottom-app-bar">
+          <button className="bottom-action-btn" onClick={onBack} title="Game Options">
+            <span className="bottom-btn-icon">⚙️</span>
+            <span>Options</span>
+          </button>
+          <button className="bottom-action-btn" onClick={() => setShowThemeModal(true)} title="Color Theme">
+            <span className="bottom-btn-icon">🎨</span>
+            <span>Theme</span>
+          </button>
+          <button
+            className="bottom-action-btn"
+            onClick={() => stepToMove(activeMoveIndex - 1)}
+            disabled={moveHistory.length === 0 || activeMoveIndex === 0}
+            title="Step Back"
+          >
+            <span className="bottom-btn-icon">◀</span>
+            <span>Back</span>
+          </button>
+          <button
+            className="bottom-action-btn"
+            onClick={() => stepToMove(activeMoveIndex + 1)}
+            disabled={moveHistory.length === 0 || activeMoveIndex >= moveHistory.length}
+            title="Step Forward"
+          >
+            <span className="bottom-btn-icon">▶</span>
+            <span>Forward</span>
+          </button>
+          {viewIndex !== null && (
+            <button
+              className="bottom-action-btn"
+              onClick={() => setViewIndex(null)}
+              style={{ background: 'rgba(59, 130, 246, 0.25)', borderColor: 'rgba(59, 130, 246, 0.5)' }}
+              title="Live Game"
+            >
+              <span className="bottom-btn-icon">⏭️</span>
+              <span>Live</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -584,91 +635,22 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
           <div className="glass-card controls-card">
             <div className="controls-title">Controls</div>
             <div className="btn-row">
+              <button className="btn btn-secondary" onClick={() => setShowThemeModal(true)}>🎨 Color Theme</button>
               <button className="btn btn-secondary" onClick={offerDraw}>🤝 Draw</button>
               <button className="btn btn-danger" onClick={resign}>🏳️ Resign</button>
             </div>
           </div>
         )}
-
-        {/* Move History & Replay Navigation Controls */}
-        <div className="glass-card history-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-            <div className="controls-title" style={{ margin: 0 }}>Move History</div>
-            {moveHistory.length > 0 && (
-              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                Click move to preview
-              </span>
-            )}
-          </div>
-
-          {/* Stepper Buttons */}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-            <button
-              className="btn btn-secondary"
-              style={{ flex: 1, padding: '0.35rem 0', fontSize: '0.8rem' }}
-              onClick={() => stepToMove(0)}
-              disabled={moveHistory.length === 0 || activeMoveIndex === 0}
-              title="Start of game"
-            >
-              ⏮️ First
-            </button>
-            <button
-              className="btn btn-secondary"
-              style={{ flex: 1, padding: '0.35rem 0', fontSize: '0.8rem' }}
-              onClick={() => stepToMove(activeMoveIndex - 1)}
-              disabled={moveHistory.length === 0 || activeMoveIndex === 0}
-              title="Previous move"
-            >
-              ◀ Prev
-            </button>
-            <button
-              className="btn btn-secondary"
-              style={{ flex: 1, padding: '0.35rem 0', fontSize: '0.8rem' }}
-              onClick={() => stepToMove(activeMoveIndex + 1)}
-              disabled={moveHistory.length === 0 || activeMoveIndex >= moveHistory.length}
-              title="Next move"
-            >
-              ▶ Next
-            </button>
-            <button
-              className="btn btn-secondary"
-              style={{ flex: 1, padding: '0.35rem 0', fontSize: '0.8rem' }}
-              onClick={() => setViewIndex(null)}
-              disabled={viewIndex === null}
-              title="Live Game"
-            >
-              ⏭️ Live
-            </button>
-          </div>
-
-          {/* Moves Scroll Container */}
-          <div className="history-scroll">
-            {pairs.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Game just started</div>}
-            {pairs.map(({ w, b, wIdx, bIdx }, i) => (
-              <div key={i} className="move-row">
-                <span className="move-num">{i + 1}.</span>
-                <span
-                  className={`move-san white ${activeMoveIndex === wIdx ? 'active-move' : ''}`}
-                  onClick={() => setViewIndex(wIdx)}
-                  style={{ cursor: 'pointer', padding: '2px 6px', borderRadius: 4 }}
-                >
-                  {w.san}
-                </span>
-                {b && (
-                  <span
-                    className={`move-san black ${activeMoveIndex === bIdx ? 'active-move' : ''}`}
-                    onClick={() => setViewIndex(bIdx!)}
-                    style={{ cursor: 'pointer', padding: '2px 6px', borderRadius: 4 }}
-                  >
-                    {b.san}
-                  </span>
-                )}
-              </div>
-            ))}
-            <div ref={historyEndRef} />
-          </div>
-        </div>
       </div>
+
+      {/* Theme Selector Modal */}
+      {showThemeModal && (
+        <ThemeSelector
+          currentTheme={theme}
+          onSelectTheme={handleSelectTheme}
+          onClose={() => setShowThemeModal(false)}
+        />
+      )}
     </div>
   );
 }
