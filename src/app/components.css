@@ -399,3 +399,24 @@
   .tiers-grid { gap: 0.5rem; }
   .tier-card { min-width: 90px; }
 }
+
+/* ─── Room Code ─────────────────────────────────────────────────────────────── */
+.room-code-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  background: rgba(139,92,246,0.08);
+  border: 1px solid rgba(139,92,246,0.25);
+  border-radius: 12px;
+  padding: 1rem 1.5rem;
+}
+
+.room-code {
+  font-family: 'Orbitron', monospace;
+  font-size: 2rem;
+  font-weight: 900;
+  letter-spacing: 0.2em;
+  color: var(--accent-light);
+}
+
