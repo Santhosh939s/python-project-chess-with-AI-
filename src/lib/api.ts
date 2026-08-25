@@ -223,8 +223,16 @@ export async function enterMatchmakingQueue(
 
     for (const d of snapDocs) {
       const data = typeof d.data === 'function' ? d.data() : d;
-      // Filter out self and expired docs (> 2 min)
-      if (data && data.uid && data.uid !== user.uid && data.status === 'waiting' && Date.now() - (data.createdAt || 0) < 120000) {
+      const age = Date.now() - (data.createdAt || 0);
+
+      // Clean up stale entries older than 20 seconds
+      if (data && data.uid && age > 20000) {
+        deleteDoc(doc(db, 'matchmaking_queue', data.uid)).catch(() => {});
+        continue;
+      }
+
+      // Filter for valid active waiting players
+      if (data && data.uid && data.uid !== user.uid && data.status === 'waiting' && age <= 20000) {
         const diff = Math.abs((data.wins || 0) - (user.wins || 0));
         if (diff < minDiff) {
           minDiff = diff;

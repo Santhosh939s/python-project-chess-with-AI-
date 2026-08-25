@@ -145,14 +145,13 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
           user,
           myPeerId,
           (matchedData) => {
-            if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
             setOpponentName(matchedData.oppName);
             if (matchedData.role === 'guest') {
               const conn = peer.connect(matchedData.peerId);
               connRef.current = conn;
               setupConnHandlers(conn, 'guest');
             } else {
-              setMatchStatusText(`Found player ${matchedData.oppName}! Connecting…`);
+              setMatchStatusText(`Found player ${matchedData.oppName}! Establishing connection…`);
             }
           }
         );
