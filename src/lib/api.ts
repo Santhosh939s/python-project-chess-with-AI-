@@ -8,8 +8,8 @@ import {
   type User,
 } from 'firebase/auth';
 import {
-  doc, setDoc, getDoc, updateDoc, increment,
-  collection, query, orderBy, limit, getDocs,
+  doc, setDoc, getDoc, updateDoc, increment, deleteDoc, onSnapshot,
+  collection, query, orderBy, limit, getDocs, where,
 } from 'firebase/firestore';
 import { getFirebaseAuth, getFirebaseDb } from './firebase';
 
@@ -129,4 +129,92 @@ export async function getLeaderboard(): Promise<UserProfile[]> {
   const q = query(collection(db, 'users'), orderBy('wins', 'desc'), limit(20));
   const snap = await getDocs(q);
   return snap.docs.map(d => d.data() as UserProfile);
+}
+
+// ─── Automated Matchmaking ───────────────────────────────────────────────────
+export async function enterMatchmakingQueue(
+  user: UserProfile,
+  peerId: string,
+  onMatched: (matchedData: { peerId: string; role: 'host' | 'guest'; oppName: string }) => void
+): Promise<() => void> {
+  const db = getFirebaseDb();
+  const queueRef = collection(db, 'matchmaking_queue');
+
+  // Query players currently waiting in queue
+  const q = query(queueRef, where('status', '==', 'waiting'));
+  const snap = await getDocs(q);
+
+  let bestMatch: any = null;
+  let minDiff = Infinity;
+
+  snap.forEach((d) => {
+    const data = d.data();
+    // Exclude self and expired entries (> 2 mins old)
+    if (data.uid !== user.uid && Date.now() - (data.createdAt || 0) < 120000) {
+      const diff = Math.abs((data.wins || 0) - (user.wins || 0));
+      if (diff < minDiff) {
+        minDiff = diff;
+        bestMatch = data;
+      }
+    }
+  });
+
+  if (bestMatch) {
+    // Found a match! Pair up with bestMatch
+    const matchedRef = doc(db, 'matchmaking_queue', bestMatch.uid);
+    await updateDoc(matchedRef, {
+      status: 'matched',
+      matchedPeerId: peerId,
+      matchedName: user.username,
+      matchedRole: 'guest',
+    });
+
+    onMatched({
+      peerId: bestMatch.peerId,
+      role: 'guest',
+      oppName: bestMatch.username || 'Opponent',
+    });
+
+    return () => {};
+  } else {
+    // No one currently waiting: register in queue and listen for someone joining us
+    const myDocRef = doc(db, 'matchmaking_queue', user.uid);
+    await setDoc(myDocRef, {
+      uid: user.uid,
+      username: user.username,
+      wins: user.wins || 0,
+      peerId,
+      status: 'waiting',
+      matchedPeerId: null,
+      matchedName: null,
+      matchedRole: null,
+      createdAt: Date.now(),
+    });
+
+    const unsub = onSnapshot(myDocRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.status === 'matched' && data.matchedPeerId) {
+          onMatched({
+            peerId: data.matchedPeerId,
+            role: 'host',
+            oppName: data.matchedName || 'Opponent',
+          });
+          deleteDoc(myDocRef).catch(() => {});
+        }
+      }
+    });
+
+    return () => {
+      unsub();
+      deleteDoc(myDocRef).catch(() => {});
+    };
+  }
+}
+
+export async function leaveMatchmakingQueue(uid: string) {
+  const db = getFirebaseDb();
+  try {
+    await deleteDoc(doc(db, 'matchmaking_queue', uid));
+  } catch {}
 }

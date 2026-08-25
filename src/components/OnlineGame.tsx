@@ -2,6 +2,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Chess } from 'chess.js';
 import ChessBoard from '@/components/ChessBoard';
+import { enterMatchmakingQueue, leaveMatchmakingQueue, getTier } from '@/lib/api';
 
 interface Props {
   user: any;
@@ -9,7 +10,8 @@ interface Props {
   onBack: () => void;
 }
 
-type Phase = 'menu' | 'hosting' | 'joining' | 'playing';
+type Phase = 'menu' | 'matching' | 'hosting' | 'joining' | 'playing';
+const INITIAL_TIME = 600; // 10 minutes in seconds
 
 export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
   const [phase, setPhase] = useState<Phase>('menu');
@@ -24,14 +26,59 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
   const [status, setStatus] = useState('');
   const [opponentName, setOpponentName] = useState('Opponent');
   const [drawOffer, setDrawOffer] = useState(false);
-  const [connected, setConnected] = useState(false);
   const [copyDone, setCopyDone] = useState(false);
   const [error, setError] = useState('');
+  const [matchStatusText, setMatchStatusText] = useState('Searching for online players…');
+
+  // 10-Minute Clocks
+  const [whiteTime, setWhiteTime] = useState(INITIAL_TIME);
+  const [blackTime, setBlackTime] = useState(INITIAL_TIME);
 
   const chessRef = useRef(new Chess());
   const peerRef = useRef<any>(null);
   const connRef = useRef<any>(null);
+  const cancelMatchmakingRef = useRef<(() => void) | null>(null);
   const historyEndRef = useRef<HTMLDivElement>(null);
+
+  const tier = getTier(user?.wins ?? 0);
+
+  // ── Clock Timer ─────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (phase !== 'playing' || gameOver) return;
+
+    const timer = setInterval(() => {
+      const turn = chessRef.current.turn();
+      if (turn === 'w') {
+        setWhiteTime(prev => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            handleTimeout('w');
+            return 0;
+          }
+          return prev - 1;
+        });
+      } else {
+        setBlackTime(prev => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            handleTimeout('b');
+            return 0;
+          }
+          return prev - 1;
+        });
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [phase, gameOver]);
+
+  function handleTimeout(timedOutColor: 'w' | 'b') {
+    const iMyTurn = timedOutColor === playerColor;
+    const result = iMyTurn ? 'loss' : 'win';
+    setGameOver(result);
+    setStatus(iMyTurn ? "Time's up! You lost on time." : "Opponent's time ran out — You win! 🏆");
+    onGameEnd(result);
+  }
 
   useEffect(() => {
     historyEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -40,17 +87,72 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      cancelMatchmakingRef.current?.();
       connRef.current?.close();
       peerRef.current?.destroy();
+      if (user?.uid) leaveMatchmakingQueue(user.uid);
     };
-  }, []);
+  }, [user]);
 
   async function loadPeer() {
     const { Peer } = await import('peerjs');
     return Peer;
   }
 
-  // ── Host a game ─────────────────────────────────────────────────────────────
+  // ── 1. Quick Automated Matchmaking ──────────────────────────────────────────
+  async function startQuickMatch() {
+    setError('');
+    setPhase('matching');
+    setMatchStatusText(`Looking for online players near your rank (${tier.name})…`);
+
+    const Peer = await loadPeer();
+    const peer = new Peer();
+    peerRef.current = peer;
+
+    peer.on('open', async (myPeerId: string) => {
+      try {
+        const cleanup = await enterMatchmakingQueue(
+          user,
+          myPeerId,
+          (matchedData) => {
+            setOpponentName(matchedData.oppName);
+            if (matchedData.role === 'guest') {
+              // We matched with a waiting host — connect directly
+              const conn = peer.connect(matchedData.peerId);
+              connRef.current = conn;
+              setupConnHandlers(conn, 'guest');
+            } else {
+              // We were the waiting host — wait for incoming connection
+              setMatchStatusText(`Found player ${matchedData.oppName}! Connecting…`);
+            }
+          }
+        );
+        cancelMatchmakingRef.current = cleanup;
+      } catch (err) {
+        setError('Matchmaking failed. Try again.');
+        setPhase('menu');
+      }
+    });
+
+    peer.on('connection', (conn: any) => {
+      connRef.current = conn;
+      setupConnHandlers(conn, 'host');
+    });
+
+    peer.on('error', () => {
+      setError('Connection error during matchmaking.');
+      setPhase('menu');
+    });
+  }
+
+  function cancelQuickMatch() {
+    cancelMatchmakingRef.current?.();
+    if (user?.uid) leaveMatchmakingQueue(user.uid);
+    peerRef.current?.destroy();
+    setPhase('menu');
+  }
+
+  // ── 2. Private Host ────────────────────────────────────────────────────────
   async function hostGame() {
     setError('');
     setPhase('hosting');
@@ -65,28 +167,16 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
 
     peer.on('connection', (conn: any) => {
       connRef.current = conn;
-      conn.on('open', () => {
-        setConnected(true);
-        setPhase('playing');
-        // Host is white (randomly decide and tell opponent)
-        const myColor: 'w' | 'b' = Math.random() < 0.5 ? 'w' : 'b';
-        const oppColor: 'w' | 'b' = myColor === 'w' ? 'b' : 'w';
-        setPlayerColor(myColor);
-        chessRef.current = new Chess();
-        setFen(chessRef.current.fen());
-        conn.send({ type: 'GAME_START', yourColor: oppColor, hostName: user?.username });
-        setStatus(myColor === 'w' ? 'Your turn (White)' : 'Opponent\'s turn');
-      });
-      setupConnHandlers(conn);
+      setupConnHandlers(conn, 'host');
     });
 
-    peer.on('error', (e: any) => {
+    peer.on('error', () => {
       setError('Connection error. Try again.');
       setPhase('menu');
     });
   }
 
-  // ── Join a game ─────────────────────────────────────────────────────────────
+  // ── 3. Private Join ────────────────────────────────────────────────────────
   async function joinGame() {
     if (!joinCode.trim()) return;
     setError('');
@@ -98,10 +188,7 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
     peer.on('open', () => {
       const conn = peer.connect(`chess-${joinCode.trim().toUpperCase()}`);
       connRef.current = conn;
-      conn.on('open', () => {
-        conn.send({ type: 'JOIN', name: user?.username });
-      });
-      setupConnHandlers(conn);
+      setupConnHandlers(conn, 'guest');
     });
 
     peer.on('error', () => {
@@ -110,16 +197,31 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
     });
   }
 
-  function setupConnHandlers(conn: any) {
+  // ── Shared P2P Handlers ──────────────────────────────────────────────────
+  function setupConnHandlers(conn: any, myRole: 'host' | 'guest') {
+    conn.on('open', () => {
+      setPhase('playing');
+      chessRef.current = new Chess();
+      setFen(chessRef.current.fen());
+      setWhiteTime(INITIAL_TIME);
+      setBlackTime(INITIAL_TIME);
+
+      if (myRole === 'host') {
+        const myColor: 'w' | 'b' = Math.random() < 0.5 ? 'w' : 'b';
+        const oppColor: 'w' | 'b' = myColor === 'w' ? 'b' : 'w';
+        setPlayerColor(myColor);
+        conn.send({ type: 'GAME_START', yourColor: oppColor, hostName: user?.username });
+        setStatus(myColor === 'w' ? 'Your turn (White)' : "Opponent's turn");
+      } else {
+        conn.send({ type: 'JOIN', name: user?.username });
+      }
+    });
+
     conn.on('data', (data: any) => {
       if (data.type === 'GAME_START') {
         setPlayerColor(data.yourColor);
-        setOpponentName(data.hostName || 'Host');
-        setConnected(true);
-        setPhase('playing');
-        chessRef.current = new Chess();
-        setFen(chessRef.current.fen());
-        setStatus(data.yourColor === 'w' ? 'Your turn (White)' : 'Opponent\'s turn (White goes first)');
+        setOpponentName(data.hostName || 'Opponent');
+        setStatus(data.yourColor === 'w' ? 'Your turn (White)' : "Opponent's turn");
       }
 
       if (data.type === 'JOIN') {
@@ -141,7 +243,7 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
 
       if (data.type === 'RESIGN') {
         setGameOver('win');
-        setStatus('Opponent resigned — You win!');
+        setStatus('Opponent resigned — You win! 🏆');
         onGameEnd('win');
       }
 
@@ -201,7 +303,7 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
     setMoveHistory(chess.history());
     updateCheck(chess);
     if (chess.isGameOver()) handleGameOver(chess, true);
-    else setStatus('Opponent\'s turn');
+    else setStatus("Opponent's turn");
   }
 
   function resign() {
@@ -233,10 +335,19 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
     setTimeout(() => setCopyDone(false), 2000);
   }
 
+  function formatTime(seconds: number) {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s < 10 ? '0' : ''}${s}`;
+  }
+
   const pairs: [string, string?][] = [];
   for (let i = 0; i < moveHistory.length; i += 2) pairs.push([moveHistory[i], moveHistory[i+1]]);
   const chess = chessRef.current;
   const isMyTurn = chess.turn() === playerColor;
+
+  const myTime = playerColor === 'w' ? whiteTime : blackTime;
+  const oppTime = playerColor === 'w' ? blackTime : whiteTime;
 
   // ── Menu ────────────────────────────────────────────────────────────────────
   if (phase === 'menu') return (
@@ -244,11 +355,24 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
       <div className="lobby-card glass-card">
         <div className="lobby-icon">🌐</div>
         <h2 className="lobby-title">Play Online</h2>
-        <p className="lobby-desc">Share a room code with a friend — no account or server needed. Fully peer-to-peer!</p>
+        <p className="lobby-desc">Find a match automatically by rank, or invite a friend via private code!</p>
         {error && <div className="auth-error">{error}</div>}
-        <button className="btn btn-primary" style={{ width: '100%' }} onClick={hostGame}>
-          ➕ Create Room
+
+        {/* ⚡ Quick Match Button */}
+        <button className="btn btn-primary" style={{ width: '100%', fontSize: '1.05rem', padding: '0.85rem' }} onClick={startQuickMatch}>
+          ⚡ Quick Match (Find Opponent)
         </button>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', margin: '0.5rem 0', opacity: 0.6 }}>
+          <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.2)' }} />
+          <span style={{ fontSize: '0.75rem', fontWeight: 700 }}>OR PRIVATE ROOM</span>
+          <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.2)' }} />
+        </div>
+
+        <button className="btn btn-secondary" style={{ width: '100%' }} onClick={hostGame}>
+          ➕ Create Private Room
+        </button>
+
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <input
             type="text"
@@ -260,12 +384,34 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
           />
           <button className="btn btn-secondary" onClick={joinGame} disabled={!joinCode.trim()}>Join</button>
         </div>
-        <button className="btn btn-secondary" style={{ width: '100%' }} onClick={onBack}>← Back</button>
+
+        <button className="btn btn-secondary" style={{ width: '100%' }} onClick={onBack}>← Back to Home</button>
       </div>
     </div>
   );
 
-  // ── Hosting / Waiting ────────────────────────────────────────────────────────
+  // ── Matching (Automated Queue) ────────────────────────────────────────────────
+  if (phase === 'matching') return (
+    <div className="online-lobby">
+      <div className="lobby-card glass-card">
+        <div className="lobby-icon">⚡</div>
+        <h2 className="lobby-title">Finding Opponent…</h2>
+        <p className="lobby-desc">{matchStatusText}</p>
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 12 }}>
+          Your Rank: <strong style={{ color: tier.color }}>{tier.emoji} {tier.name}</strong> ({user?.wins ?? 0} Wins)
+        </div>
+        <div className="ai-thinking" style={{ justifyContent: 'center', margin: '1rem 0' }}>
+          <div className="thinking-dots"><span/><span/><span/></div>
+          Searching online players…
+        </div>
+        <button className="btn btn-danger" style={{ width: '100%' }} onClick={cancelQuickMatch}>
+          Cancel Matchmaking
+        </button>
+      </div>
+    </div>
+  );
+
+  // ── Hosting (Private Room) ─────────────────────────────────────────────────
   if (phase === 'hosting') return (
     <div className="online-lobby">
       <div className="lobby-card glass-card">
@@ -280,7 +426,7 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
         </div>
         <div className="ai-thinking" style={{ justifyContent: 'center' }}>
           <div className="thinking-dots"><span/><span/><span/></div>
-          Waiting for opponent…
+          Waiting for friend to join…
         </div>
         <button className="btn btn-danger" style={{ width: '100%', marginTop: 8 }} onClick={() => { peerRef.current?.destroy(); setPhase('menu'); }}>
           Cancel
@@ -289,7 +435,7 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
     </div>
   );
 
-  // ── Joining ──────────────────────────────────────────────────────────────────
+  // ── Joining (Private Room) ────────────────────────────────────────────────
   if (phase === 'joining') return (
     <div className="online-lobby">
       <div className="lobby-card glass-card">
@@ -303,33 +449,49 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
     </div>
   );
 
-  // ── Game ─────────────────────────────────────────────────────────────────────
+  // ── Active P2P Game ────────────────────────────────────────────────────────
   return (
     <div className="app-content">
-      <ChessBoard
-        fen={fen}
-        playerColor={playerColor}
-        onMove={handlePlayerMove}
-        disabled={!isMyTurn || !!gameOver}
-        lastMove={lastMove}
-        checkSquare={checkSquare}
-      />
+      <div className="game-board-section">
+        {/* Opponent Bar */}
+        <div className="player-bar opponent-bar">
+          <div className="player-bar-info">
+            <div className="player-bar-name">👤 {opponentName} ({playerColor === 'w' ? '⬛ Black' : '⬜ White'})</div>
+            <div className="player-bar-rank" style={{ color: 'var(--accent-light)' }}>Online Opponent</div>
+          </div>
+          <div className={`chess-clock ${!isMyTurn && !gameOver ? 'active' : ''} ${oppTime < 30 ? 'low-time' : ''}`}>
+            ⏱️ {formatTime(oppTime)}
+          </div>
+        </div>
+
+        {/* Chess Board */}
+        <ChessBoard
+          fen={fen}
+          playerColor={playerColor}
+          onMove={handlePlayerMove}
+          disabled={!isMyTurn || !!gameOver}
+          lastMove={lastMove}
+          checkSquare={checkSquare}
+        />
+
+        {/* User Bar */}
+        <div className="player-bar user-bar">
+          <div className="player-bar-info">
+            <div className="player-bar-name">👤 {user?.username} ({playerColor === 'w' ? '⬜ White' : '⬛ Black'})</div>
+            <div className="player-bar-rank" style={{ color: tier.color }}>
+              {tier.emoji} {tier.name} · {user?.wins ?? 0}W {user?.losses ?? 0}L
+            </div>
+          </div>
+          <div className={`chess-clock ${isMyTurn && !gameOver ? 'active' : ''} ${myTime < 30 ? 'low-time' : ''}`}>
+            ⏱️ {formatTime(myTime)}
+          </div>
+        </div>
+      </div>
 
       <div className="side-panel">
         <div className="glass-card status-card">
-          <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-            <div>
-              <div className="controls-title">You ({playerColor === 'w' ? '⬜ White' : '⬛ Black'})</div>
-              <div style={{ fontWeight: 700 }}>{user?.username}</div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <div className="controls-title">Opponent</div>
-              <div style={{ fontWeight: 700 }}>{opponentName}</div>
-            </div>
-          </div>
-
           <div className={`status-message ${chess.inCheck() ? 'check' : ''}`}>
-            {isMyTurn && !gameOver ? '🟢 Your turn' : !gameOver ? '⏳ Waiting…' : ''} {status}
+            {isMyTurn && !gameOver ? '🟢 Your turn' : !gameOver ? '⏳ Opponent thinking…' : ''} {status}
           </div>
 
           {drawOffer && (
@@ -347,7 +509,7 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
               <div className="game-over-title">
                 {gameOver === 'win' ? '🏆 You Win!' : gameOver === 'loss' ? '😔 You Lose' : '🤝 Draw'}
               </div>
-              <button className="btn btn-primary" style={{ marginTop: 12, width: '100%' }} onClick={onBack}>Back to Menu</button>
+              <button className="btn btn-primary" style={{ marginTop: 12, width: '100%' }} onClick={onBack}>Back to Home</button>
             </div>
           )}
         </div>
