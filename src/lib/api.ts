@@ -210,77 +210,106 @@ export async function enterMatchmakingQueue(
 ): Promise<() => void> {
   const db = getFirebaseDb();
   const queueRef = collection(db, 'matchmaking_queue');
+  const myDocRef = doc(db, 'matchmaking_queue', user.uid);
 
-  // Query players currently waiting in queue
-  const q = query(queueRef, where('status', '==', 'waiting'));
-  const snap = await getDocs(q);
+  let matched = false;
+  let pollInterval: any = null;
 
-  let bestMatch: any = null;
-  let minDiff = Infinity;
+  // Function to search for waiting players
+  async function tryMatch() {
+    if (matched) return;
+    try {
+      const q = query(queueRef, where('status', '==', 'waiting'));
+      const snap = await getDocs(q);
 
-  snap.forEach((d) => {
-    const data = d.data();
-    // Exclude self and expired entries (> 2 mins old)
-    if (data.uid !== user.uid && Date.now() - (data.createdAt || 0) < 120000) {
-      const diff = Math.abs((data.wins || 0) - (user.wins || 0));
-      if (diff < minDiff) {
-        minDiff = diff;
-        bestMatch = data;
+      let bestMatch: any = null;
+      let minDiff = Infinity;
+
+      snap.forEach((d) => {
+        const data = d.data();
+        if (data.uid !== user.uid && Date.now() - (data.createdAt || 0) < 120000) {
+          const diff = Math.abs((data.wins || 0) - (user.wins || 0));
+          if (diff < minDiff) {
+            minDiff = diff;
+            bestMatch = data;
+          }
+        }
+      });
+
+      if (bestMatch && !matched) {
+        matched = true;
+        if (pollInterval) clearInterval(pollInterval);
+
+        // Update target player's doc to matched
+        await updateDoc(doc(db, 'matchmaking_queue', bestMatch.uid), {
+          status: 'matched',
+          matchedPeerId: peerId,
+          matchedName: user.username,
+          matchedRole: 'guest',
+        });
+
+        // Delete own queue doc
+        deleteDoc(myDocRef).catch(() => {});
+
+        onMatched({
+          peerId: bestMatch.peerId,
+          role: 'guest',
+          oppName: bestMatch.username || 'Opponent',
+        });
+      }
+    } catch (e) {
+      console.warn('Matchmaking poll error:', e);
+    }
+  }
+
+  // 1. Immediately register self in queue
+  await setDoc(myDocRef, {
+    uid: user.uid,
+    username: user.username,
+    wins: user.wins || 0,
+    peerId,
+    status: 'waiting',
+    matchedPeerId: null,
+    matchedName: null,
+    matchedRole: null,
+    createdAt: Date.now(),
+  });
+
+  // 2. Attempt immediate match check
+  await tryMatch();
+
+  // 3. Listen for incoming match from another player who matched us
+  const unsub = onSnapshot(myDocRef, (docSnap) => {
+    if (docSnap.exists()) {
+      const data = docSnap.data();
+      if (data.status === 'matched' && data.matchedPeerId && !matched) {
+        matched = true;
+        if (pollInterval) clearInterval(pollInterval);
+
+        onMatched({
+          peerId: data.matchedPeerId,
+          role: 'host',
+          oppName: data.matchedName || 'Opponent',
+        });
+
+        deleteDoc(myDocRef).catch(() => {});
       }
     }
   });
 
-  if (bestMatch) {
-    // Found a match! Pair up with bestMatch
-    const matchedRef = doc(db, 'matchmaking_queue', bestMatch.uid);
-    await updateDoc(matchedRef, {
-      status: 'matched',
-      matchedPeerId: peerId,
-      matchedName: user.username,
-      matchedRole: 'guest',
-    });
+  // 4. Poll every 2 seconds to catch simultaneous clicks
+  pollInterval = setInterval(() => {
+    if (!matched) {
+      tryMatch();
+    }
+  }, 2000);
 
-    onMatched({
-      peerId: bestMatch.peerId,
-      role: 'guest',
-      oppName: bestMatch.username || 'Opponent',
-    });
-
-    return () => {};
-  } else {
-    // No one currently waiting: register in queue and listen for someone joining us
-    const myDocRef = doc(db, 'matchmaking_queue', user.uid);
-    await setDoc(myDocRef, {
-      uid: user.uid,
-      username: user.username,
-      wins: user.wins || 0,
-      peerId,
-      status: 'waiting',
-      matchedPeerId: null,
-      matchedName: null,
-      matchedRole: null,
-      createdAt: Date.now(),
-    });
-
-    const unsub = onSnapshot(myDocRef, (docSnap) => {
-      if (docSnap.exists()) {
-        const data = docSnap.data();
-        if (data.status === 'matched' && data.matchedPeerId) {
-          onMatched({
-            peerId: data.matchedPeerId,
-            role: 'host',
-            oppName: data.matchedName || 'Opponent',
-          });
-          deleteDoc(myDocRef).catch(() => {});
-        }
-      }
-    });
-
-    return () => {
-      unsub();
-      deleteDoc(myDocRef).catch(() => {});
-    };
-  }
+  return () => {
+    matched = true;
+    if (pollInterval) clearInterval(pollInterval);
+    unsub();
+    deleteDoc(myDocRef).catch(() => {});
+  };
 }
 
 export async function leaveMatchmakingQueue(uid: string) {

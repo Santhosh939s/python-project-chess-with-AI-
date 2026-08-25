@@ -15,6 +15,7 @@ interface Props {
 
 type Phase = 'menu' | 'matching' | 'hosting' | 'joining' | 'playing';
 const INITIAL_TIME = 600; // 10 minutes in seconds
+const BUFFER_SEARCH_SECONDS = 15; // 15s search window
 
 export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
   const [phase, setPhase] = useState<Phase>('menu');
@@ -32,6 +33,10 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
   const [copyDone, setCopyDone] = useState(false);
   const [error, setError] = useState('');
   const [matchStatusText, setMatchStatusText] = useState('Searching for online players…');
+
+  // Matchmaking Buffer & Countdown State
+  const [searchCountdown, setSearchCountdown] = useState(BUFFER_SEARCH_SECONDS);
+  const [noOpponentFound, setNoOpponentFound] = useState(false);
 
   // Board theme state & Options menu state
   const [theme, setTheme] = useState<BoardTheme>('cyber');
@@ -62,6 +67,7 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
   const peerRef = useRef<any>(null);
   const connRef = useRef<any>(null);
   const cancelMatchmakingRef = useRef<(() => void) | null>(null);
+  const countdownTimerRef = useRef<any>(null);
 
   const tier = getTier(user?.wins ?? 0);
 
@@ -106,6 +112,7 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
       cancelMatchmakingRef.current?.();
       connRef.current?.close();
       peerRef.current?.destroy();
@@ -118,11 +125,15 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
     return Peer;
   }
 
-  // ── 1. Quick Automated Matchmaking ──────────────────────────────────────────
+  // ── 1. Quick Automated Matchmaking with 15s Buffer ────────────────────────
   async function startQuickMatch() {
     setError('');
+    setNoOpponentFound(false);
+    setSearchCountdown(BUFFER_SEARCH_SECONDS);
     setPhase('matching');
-    setMatchStatusText(`Looking for online players near your rank (${tier.name})…`);
+    setMatchStatusText(`Searching online queue near your rank (${tier.name})…`);
+
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
 
     const Peer = await loadPeer();
     const peer = new Peer();
@@ -134,6 +145,7 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
           user,
           myPeerId,
           (matchedData) => {
+            if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
             setOpponentName(matchedData.oppName);
             if (matchedData.role === 'guest') {
               const conn = peer.connect(matchedData.peerId);
@@ -145,6 +157,21 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
           }
         );
         cancelMatchmakingRef.current = cleanup;
+
+        // Start 15s buffer countdown
+        let secondsLeft = BUFFER_SEARCH_SECONDS;
+        countdownTimerRef.current = setInterval(() => {
+          secondsLeft -= 1;
+          setSearchCountdown(secondsLeft);
+          if (secondsLeft <= 0) {
+            clearInterval(countdownTimerRef.current);
+            cancelMatchmakingRef.current?.();
+            if (user?.uid) leaveMatchmakingQueue(user.uid);
+            peer.destroy();
+            setNoOpponentFound(true);
+          }
+        }, 1000);
+
       } catch (err) {
         setError('Matchmaking failed. Try again.');
         setPhase('menu');
@@ -152,17 +179,20 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
     });
 
     peer.on('connection', (conn: any) => {
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
       connRef.current = conn;
       setupConnHandlers(conn, 'host');
     });
 
     peer.on('error', () => {
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
       setError('Connection error during matchmaking.');
       setPhase('menu');
     });
   }
 
   function cancelQuickMatch() {
+    if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
     cancelMatchmakingRef.current?.();
     if (user?.uid) leaveMatchmakingQueue(user.uid);
     peerRef.current?.destroy();
@@ -217,6 +247,7 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
   // ── Shared P2P Handlers ──────────────────────────────────────────────────
   function setupConnHandlers(conn: any, myRole: 'host' | 'guest') {
     conn.on('open', () => {
+      if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
       setPhase('playing');
       chessRef.current = new Chess();
       setFen(chessRef.current.fen());
@@ -438,23 +469,49 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
     </div>
   );
 
-  // ── Matching (Automated Queue) ────────────────────────────────────────────────
+  // ── Matching (Automated Queue with 15s Buffer) ─────────────────────────────
   if (phase === 'matching') return (
     <div className="online-lobby">
       <div className="lobby-card glass-card">
-        <div className="lobby-icon">⚡</div>
-        <h2 className="lobby-title">Finding Opponent…</h2>
-        <p className="lobby-desc">{matchStatusText}</p>
-        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 12 }}>
-          Your Rank: <strong style={{ color: tier.color }}>{tier.emoji} {tier.name}</strong> ({user?.wins ?? 0} Wins)
-        </div>
-        <div className="ai-thinking" style={{ justifyContent: 'center', margin: '1rem 0' }}>
-          <div className="thinking-dots"><span/><span/><span/></div>
-          Searching online players…
-        </div>
-        <button className="btn btn-danger" style={{ width: '100%' }} onClick={cancelQuickMatch}>
-          Cancel Matchmaking
-        </button>
+        {!noOpponentFound ? (
+          <>
+            <div className="lobby-icon">⚡</div>
+            <h2 className="lobby-title">Finding Opponent…</h2>
+            <p className="lobby-desc">{matchStatusText}</p>
+            <div style={{ fontSize: '1.2rem', fontWeight: 800, color: 'var(--board-light)', margin: '0.5rem 0' }}>
+              ⏱️ Searching: {searchCountdown}s
+            </div>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: 12 }}>
+              Your Rank: <strong style={{ color: tier.color }}>{tier.emoji} {tier.name}</strong> ({user?.wins ?? 0} Wins)
+            </div>
+            <div className="ai-thinking" style={{ justifyContent: 'center', margin: '1rem 0' }}>
+              <div className="thinking-dots"><span/><span/><span/></div>
+              Checking online players…
+            </div>
+            <button className="btn btn-danger" style={{ width: '100%' }} onClick={cancelQuickMatch}>
+              Cancel Matchmaking
+            </button>
+          </>
+        ) : (
+          <>
+            <div className="lobby-icon">🚫</div>
+            <h2 className="lobby-title">No Players Online</h2>
+            <p className="lobby-desc">
+              No online players found right now. You can try searching again with buffer, create a private room for a friend, or play vs AI!
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', width: '100%', marginTop: '1rem' }}>
+              <button className="btn btn-primary" onClick={startQuickMatch}>
+                🔄 Search Again (15s Buffer)
+              </button>
+              <button className="btn btn-secondary" onClick={hostGame}>
+                ➕ Create Private Room
+              </button>
+              <button className="btn btn-secondary" onClick={onBack}>
+                🤖 Play vs AI Instead
+              </button>
+            </div>
+          </>
+        )}
       </div>
     </div>
   );
