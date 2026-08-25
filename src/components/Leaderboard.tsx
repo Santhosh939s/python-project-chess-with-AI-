@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect } from 'react';
-import { getLeaderboard, getTier } from '@/lib/api';
+import { getLeaderboard, getTier, generateUserTag } from '@/lib/api';
 
 export default function Leaderboard({ onClose }: { onClose: () => void }) {
   const [board, setBoard] = useState<any[]>([]);
@@ -14,7 +14,7 @@ export default function Leaderboard({ onClose }: { onClose: () => void }) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-card leaderboard-modal" onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.25rem' }}>
-          <h2 className="modal-title" style={{ margin: 0 }}>🏆 Leaderboard</h2>
+          <h2 className="modal-title" style={{ margin: 0 }}>🏆 Global Leaderboard</h2>
           <button className="btn btn-secondary" onClick={onClose} style={{ padding: '0.35rem 0.75rem' }}>✕</button>
         </div>
 
@@ -31,11 +31,15 @@ export default function Leaderboard({ onClose }: { onClose: () => void }) {
           <div className="lb-list">
             {board.map((player, i) => {
               const tier = getTier(player.wins);
+              const tag = player.userTag || (player.uid ? generateUserTag(player.uid) : '');
               return (
                 <div key={player.uid || player.username} className="lb-row">
                   <span className="lb-rank">{i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}</span>
                   <div className="lb-info">
-                    <span className="lb-name">{player.username}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span className="lb-name">{player.username}</span>
+                      <span style={{ color: 'var(--accent-light)', fontSize: '0.72rem', fontWeight: 600 }}>{tag}</span>
+                    </div>
                     <span className="lb-tier" style={{ color: tier.color }}>{tier.emoji} {tier.name}</span>
                   </div>
                   <div className="lb-stats">

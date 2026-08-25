@@ -22,18 +22,40 @@ export default function HomePage() {
   const [notification, setNotification] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
-  // Listen to Firebase auth state
+  // Read local cache immediately to prevent flash & listen to Firebase auth state
   useEffect(() => {
+    try {
+      const cached = localStorage.getItem('chess_user_session');
+      if (cached) {
+        setUser(JSON.parse(cached));
+        setAuthLoading(false);
+      }
+    } catch {}
+
     const unsub = onAuthChange(async (firebaseUser) => {
       if (firebaseUser) {
         try {
-          const profile = await getProfileById(firebaseUser.uid);
-          setUser(userWithTier(profile));
+          const profile = await getProfileById(firebaseUser.uid, firebaseUser);
+          const fullUser = userWithTier(profile);
+          setUser(fullUser);
+          localStorage.setItem('chess_user_session', JSON.stringify(fullUser));
         } catch {
-          setUser(null);
+          const fallbackTag = `#${firebaseUser.uid.slice(-4).toUpperCase()}`;
+          const fallbackName = firebaseUser.displayName?.replace(/\s+/g, '').toLowerCase() || firebaseUser.email?.split('@')[0] || 'player';
+          const fallback = userWithTier({
+            uid: firebaseUser.uid,
+            username: fallbackName,
+            userTag: fallbackTag,
+            email: firebaseUser.email || '',
+            wins: 0, losses: 0, draws: 0, gamesPlayed: 0,
+            createdAt: new Date().toISOString(),
+          });
+          setUser(fallback);
+          localStorage.setItem('chess_user_session', JSON.stringify(fallback));
         }
       } else {
         setUser(null);
+        localStorage.removeItem('chess_user_session');
       }
       setAuthLoading(false);
     });
@@ -46,9 +68,11 @@ export default function HomePage() {
   }
 
   function handleAuthSuccess(profile: UserProfile) {
-    setUser(userWithTier(profile));
+    const fullUser = userWithTier(profile);
+    setUser(fullUser);
+    localStorage.setItem('chess_user_session', JSON.stringify(fullUser));
     setShowAuth(false);
-    showToast(`Welcome, ${profile.username}! 👋`);
+    showToast(`Welcome, ${profile.username} ${fullUser.userTag}! 👋`);
     if (pendingMode) { setScreen(pendingMode); setPendingMode(null); }
   }
 
@@ -59,18 +83,20 @@ export default function HomePage() {
 
   async function handleLogout() {
     await logout();
+    localStorage.removeItem('chess_user_session');
     setUser(null);
     setScreen('home');
     showToast('Signed out successfully');
   }
 
   async function handleGameEnd(result: 'win' | 'loss' | 'draw') {
-    // Update Firebase stats
     if (user?.uid) {
       try {
         await updateStats(user.uid, result);
         const fresh = await getProfileById(user.uid);
-        setUser(userWithTier(fresh));
+        const fullUser = userWithTier(fresh);
+        setUser(fullUser);
+        localStorage.setItem('chess_user_session', JSON.stringify(fullUser));
         if (result === 'win')  showToast(`🏆 You won! Rank: ${getTier(fresh.wins).name}`);
         else if (result === 'draw') showToast('🤝 It\'s a draw!');
         else showToast('Better luck next time!');
@@ -97,7 +123,9 @@ export default function HomePage() {
           ) : user ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '0.85rem', fontWeight: 700 }}>{user.username}</div>
+                <div style={{ fontSize: '0.85rem', fontWeight: 700 }}>
+                  {user.username} <span style={{ color: 'var(--accent-light)', fontSize: '0.75rem' }}>{user.userTag}</span>
+                </div>
                 <div style={{ fontSize: '0.7rem', fontWeight: 600, display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
                   <span style={{ color: tier?.color }}>{tier?.emoji} {tier?.name}</span>
                   <span style={{ color: 'var(--text-muted)' }}>{user.wins}W · {user.losses}L</span>
@@ -125,15 +153,15 @@ export default function HomePage() {
                 <span className="hero-gradient">Reimagined.</span>
               </h1>
               <p className="hero-subtitle">
-                Challenge a powerful AI that adapts to your rank — or invite a friend to a real-time peer-to-peer game.
-                No backend. Pure chess.
+                Challenge a powerful AI that adapts to your rank — or match instantly online in real-time.
+                No backend needed.
               </p>
               <div className="hero-buttons">
                 <button className="btn btn-primary hero-btn" onClick={() => handlePlayMode('ai')}>
                   🤖 Play vs AI
                 </button>
                 <button className="btn btn-secondary hero-btn" onClick={() => handlePlayMode('online')}>
-                  🌐 Play Online
+                  ⚡ Quick Online Match
                 </button>
               </div>
             </div>
@@ -163,9 +191,9 @@ export default function HomePage() {
           {/* Features */}
           <section className="features-section">
             {[
-              { icon: '🤖', title: 'Adaptive AI', desc: 'AI depth grows with your rank — from Pawn (easy) to King (brutal). All runs in your browser. No server needed.' },
-              { icon: '🌐', title: 'Peer-to-Peer Online', desc: 'Create a room and share the code with a friend. Powered by WebRTC — zero backend, zero cost.' },
-              { icon: '🏆', title: 'Firebase Rank System', desc: 'Your wins, losses and rank are stored in Firebase. Climb 6 tiers and watch the AI get tougher.' },
+              { icon: '🤖', title: 'Adaptive AI', desc: 'AI depth grows with your rank — from Pawn (easy) to King (brutal). All runs in your browser.' },
+              { icon: '⚡', title: 'Automated Quick Match', desc: 'Find online players automatically near your rank. Peer-to-peer WebRTC gaming.' },
+              { icon: '🏆', title: 'Firebase Unique Ranks', desc: 'Unique player tags (#8A2F) and persistent leaderboard tracking across sessions.' },
             ].map(f => (
               <div key={f.title} className="feature-card glass-card">
                 <div className="feature-icon">{f.icon}</div>

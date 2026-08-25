@@ -30,6 +30,7 @@ export function getTier(wins: number) {
 export interface UserProfile {
   uid: string;
   username: string;
+  userTag: string;
   email: string;
   wins: number;
   losses: number;
@@ -38,9 +39,14 @@ export interface UserProfile {
   createdAt: string;
 }
 
+export function generateUserTag(uid: string): string {
+  return `#${uid.slice(-4).toUpperCase()}`;
+}
+
 export function userWithTier(user: UserProfile) {
   const tier = getTier(user.wins);
-  return { ...user, rank: tier.name, rankColor: tier.color, rankEmoji: tier.emoji, aiDepth: tier.depth };
+  const tag = user.userTag || generateUserTag(user.uid);
+  return { ...user, userTag: tag, rank: tier.name, rankColor: tier.color, rankEmoji: tier.emoji, aiDepth: tier.depth };
 }
 
 // ─── Auth ──────────────────────────────────────────────────────────────────────
@@ -52,9 +58,11 @@ export async function register(username: string, email: string, password: string
   if (snap.exists()) throw new Error('Username already taken');
 
   const cred = await createUserWithEmailAndPassword(auth, email, password);
+  const tag = generateUserTag(cred.user.uid);
   const profile: UserProfile = {
     uid: cred.user.uid,
     username: username.toLowerCase(),
+    userTag: tag,
     email,
     wins: 0, losses: 0, draws: 0, gamesPlayed: 0,
     createdAt: new Date().toISOString(),
@@ -67,7 +75,7 @@ export async function register(username: string, email: string, password: string
 export async function login(email: string, password: string): Promise<UserProfile> {
   const auth = getFirebaseAuth();
   const cred = await signInWithEmailAndPassword(auth, email, password);
-  return getProfileById(cred.user.uid);
+  return getProfileById(cred.user.uid, cred.user);
 }
 
 export async function loginWithGoogle(): Promise<UserProfile> {
@@ -79,14 +87,23 @@ export async function loginWithGoogle(): Promise<UserProfile> {
 
   // Check if profile exists already
   const snap = await getDoc(doc(db, 'users', uid));
-  if (snap.exists()) return snap.data() as UserProfile;
+  if (snap.exists()) {
+    const existing = snap.data() as UserProfile;
+    if (!existing.userTag) {
+      existing.userTag = generateUserTag(uid);
+      await updateDoc(doc(db, 'users', uid), { userTag: existing.userTag });
+    }
+    return existing;
+  }
 
   // First time — create profile using Google display name
   const rawName = cred.user.displayName?.replace(/\s+/g, '').toLowerCase() || `player${uid.slice(0,6)}`;
   const username = rawName.slice(0, 20);
+  const tag = generateUserTag(uid);
   const profile: UserProfile = {
     uid,
     username,
+    userTag: tag,
     email: cred.user.email || '',
     wins: 0, losses: 0, draws: 0, gamesPlayed: 0,
     createdAt: new Date().toISOString(),
@@ -107,11 +124,40 @@ export function onAuthChange(cb: (user: User | null) => void) {
 }
 
 // ─── Profile ───────────────────────────────────────────────────────────────────
-export async function getProfileById(uid: string): Promise<UserProfile> {
+export async function getProfileById(uid: string, firebaseUser?: User): Promise<UserProfile> {
   const db = getFirebaseDb();
-  const snap = await getDoc(doc(db, 'users', uid));
-  if (!snap.exists()) throw new Error('Profile not found');
-  return snap.data() as UserProfile;
+  try {
+    const snap = await getDoc(doc(db, 'users', uid));
+    if (snap.exists()) {
+      const profile = snap.data() as UserProfile;
+      if (!profile.userTag) {
+        profile.userTag = generateUserTag(uid);
+        await updateDoc(doc(db, 'users', uid), { userTag: profile.userTag }).catch(() => {});
+      }
+      return profile;
+    }
+  } catch (e) {
+    console.warn('Error fetching Firestore user profile:', e);
+  }
+
+  // Auto-recovery if logged in via Auth but doc is missing or errored
+  if (firebaseUser) {
+    const rawName = firebaseUser.displayName?.replace(/\s+/g, '').toLowerCase() || firebaseUser.email?.split('@')[0] || `player${uid.slice(0,4)}`;
+    const username = rawName.slice(0, 20);
+    const tag = generateUserTag(uid);
+    const profile: UserProfile = {
+      uid,
+      username,
+      userTag: tag,
+      email: firebaseUser.email || '',
+      wins: 0, losses: 0, draws: 0, gamesPlayed: 0,
+      createdAt: new Date().toISOString(),
+    };
+    await setDoc(doc(db, 'users', uid), profile).catch(() => {});
+    return profile;
+  }
+
+  throw new Error('Profile not found');
 }
 
 export async function updateStats(uid: string, result: 'win' | 'loss' | 'draw'): Promise<void> {
