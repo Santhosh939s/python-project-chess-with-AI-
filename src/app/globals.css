@@ -26,18 +26,18 @@
   --text-secondary: #94a3b8;
   --text-muted: #475569;
 
-  /* Default Invented Color Palette: Cyber Mint & Obsidian Slate */
+  /* Default Invented Color Palette: Cyber Mint & Deep Teal Obsidian */
   --board-light: #2dd4bf;
-  --board-dark: #0f172a;
+  --board-dark: #0f3843;
   --board-light-hover: #5eead4;
-  --board-dark-hover: #1e293b;
+  --board-dark-hover: #174b5a;
   --board-selected: #f59e0b;
   --board-legal: rgba(0,0,0,0.22);
   --board-last-move-light: #f59e0b;
   --board-last-move-dark: #d97706;
   --board-check: radial-gradient(circle, rgba(244,63,94,0.95) 0%, rgba(225,29,72,0.6) 70%, transparent 100%);
-  --sq-light-text: #0f172a;
-  --sq-dark-text: #2dd4bf;
+  --sq-light-text: #051f26;
+  --sq-dark-text: #5eead4;
 
   --shadow-glow: 0 0 40px rgba(45,212,191,0.25);
   --shadow-board: 0 25px 80px rgba(0,0,0,0.85);
@@ -46,17 +46,17 @@
   --transition: 0.2s cubic-bezier(0.4,0,0.2,1);
 }
 
-/* Theme 1: Cyber Mint & Obsidian (Invented Default) */
+/* Theme 1: Cyber Mint & Deep Teal Obsidian (Invented Default) */
 [data-theme="cyber"] {
   --board-light: #2dd4bf;
-  --board-dark: #0f172a;
+  --board-dark: #0f3843;
   --board-light-hover: #5eead4;
-  --board-dark-hover: #1e293b;
+  --board-dark-hover: #174b5a;
   --board-selected: #f59e0b;
   --board-last-move-light: #f59e0b;
   --board-last-move-dark: #d97706;
-  --sq-light-text: #0f172a;
-  --sq-dark-text: #2dd4bf;
+  --sq-light-text: #051f26;
+  --sq-dark-text: #5eead4;
 }
 
 /* Theme 2: Royal Sapphire & Pearl Gold */
@@ -393,6 +393,15 @@ body::before {
   width: 100%;
   height: 100%;
   filter: drop-shadow(0 3px 5px rgba(0,0,0,0.35));
+}
+
+/* Crisp White Outline Stroke for Black Pieces on Dark Squares */
+.piece-container.piece-black .piece-svg {
+  filter: drop-shadow(0 0 1px #ffffff) drop-shadow(0 0 2px rgba(255, 255, 255, 0.9)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.9));
+}
+
+.piece-container.piece-white .piece-svg {
+  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.8)) drop-shadow(0 3px 5px rgba(0, 0, 0, 0.5));
 }
 
 .square:hover .piece-container {

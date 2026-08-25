@@ -188,7 +188,7 @@ export default function ChessPiece({ type, color, dragging = false }: Props) {
 
   return (
     <div
-      className={`piece-container ${dragging ? 'piece-dragging' : ''}`}
+      className={`piece-container ${color === 'w' ? 'piece-white' : 'piece-black'} ${dragging ? 'piece-dragging' : ''}`}
       aria-label={`${color === 'w' ? 'White' : 'Black'} ${type}`}
     >
       {renderSvg(color)}
