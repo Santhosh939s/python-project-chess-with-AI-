@@ -49,7 +49,7 @@ export default function HomePage() {
             username: fallbackName,
             userTag: fallbackTag,
             email: firebaseUser.email || '',
-            wins: 0, losses: 0, draws: 0, gamesPlayed: 0,
+            wins: 0, losses: 0, draws: 0, gamesPlayed: 0, rating: 0,
             createdAt: new Date().toISOString(),
           });
           setUser(fallback);
@@ -132,11 +132,11 @@ export default function HomePage() {
               >
                 <span style={{ fontSize: '1.1rem' }}>👤</span>
                 <div style={{ textAlign: 'left' }}>
-                  <div style={{ fontSize: '0.82rem', fontWeight: 700, lineHeight: 1.1 }}>
-                    {user.username} <span style={{ color: 'var(--accent-light)', fontSize: '0.7rem' }}>{user.userTag}</span>
+                  <div style={{ fontSize: '0.85rem', fontWeight: 800, lineHeight: 1.1 }}>
+                    {user.username}
                   </div>
-                  <div style={{ fontSize: '0.68rem', color: tier?.color, fontWeight: 600 }}>
-                    {tier?.emoji} {tier?.name}
+                  <div style={{ fontSize: '0.68rem', color: tier?.color, fontWeight: 600, marginTop: 2 }}>
+                    ⭐ {user.rating ?? Math.min(1000, (user.wins || 0) * 30)} pts · {tier?.emoji} {tier?.name}
                   </div>
                 </div>
               </button>
@@ -202,7 +202,7 @@ export default function HomePage() {
             {[
               { icon: '🤖', title: 'Adaptive AI', desc: 'AI depth grows with your rank — from Pawn (easy) to King (brutal). All runs in your browser.' },
               { icon: '⚡', title: 'Automated Quick Match', desc: 'Find online players automatically near your rank. Peer-to-peer WebRTC gaming.' },
-              { icon: '🏆', title: 'Firebase Unique Ranks', desc: 'Unique player tags (#8A2F) and persistent leaderboard tracking across sessions.' },
+              { icon: '🏆', title: 'Unique Ratings (0–1000)', desc: 'Compressed database unique usernames and real-time rating points leaderboard tracking.' },
             ].map(f => (
               <div key={f.title} className="feature-card glass-card">
                 <div className="feature-icon">{f.icon}</div>
@@ -214,20 +214,20 @@ export default function HomePage() {
 
           {/* Rank tiers */}
           <section className="tiers-section">
-            <h2 className="section-title">Rank Progression</h2>
+            <h2 className="section-title">Rating & Rank Progression (0 – 1000+)</h2>
             <div className="tiers-grid">
               {[
-                { emoji:'♙', name:'Pawn',   wins:'0–4',    depth:2, color:'#94a3b8' },
-                { emoji:'♘', name:'Knight', wins:'5–14',   depth:3, color:'#10b981' },
-                { emoji:'♗', name:'Bishop', wins:'15–29',  depth:3, color:'#3b82f6' },
-                { emoji:'♖', name:'Rook',   wins:'30–49',  depth:4, color:'#8b5cf6' },
-                { emoji:'♛', name:'Queen',  wins:'50–99',  depth:4, color:'#f59e0b' },
-                { emoji:'♚', name:'King',   wins:'100+',   depth:5, color:'#f43f5e' },
+                { emoji:'♙', name:'Pawn',   points:'0–150 pts',    depth:2, color:'#94a3b8' },
+                { emoji:'♘', name:'Knight', points:'151–350 pts',  depth:3, color:'#10b981' },
+                { emoji:'♗', name:'Bishop', points:'351–550 pts',  depth:3, color:'#3b82f6' },
+                { emoji:'♖', name:'Rook',   points:'551–750 pts',  depth:4, color:'#8b5cf6' },
+                { emoji:'♛', name:'Queen',  points:'751–900 pts',  depth:4, color:'#f59e0b' },
+                { emoji:'♚', name:'King',   points:'901–1000+ pts', depth:5, color:'#f43f5e' },
               ].map(t => (
                 <div key={t.name} className="tier-card glass-card" style={{ borderColor: `${t.color}33` }}>
                   <span className="tier-emoji" style={{ color: t.color }}>{t.emoji}</span>
                   <span className="tier-name"  style={{ color: t.color }}>{t.name}</span>
-                  <span className="tier-wins">{t.wins} wins</span>
+                  <span className="tier-wins" style={{ fontWeight: 700 }}>{t.points}</span>
                   <span className="tier-depth">AI Depth {t.depth}</span>
                 </div>
               ))}

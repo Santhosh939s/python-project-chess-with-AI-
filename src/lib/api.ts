@@ -13,25 +13,27 @@ import {
 } from 'firebase/firestore';
 import { getFirebaseAuth, getFirebaseDb } from './firebase';
 
-// ─── Rank Tiers ───────────────────────────────────────────────────────────────
+// ─── Rank Tiers (0 to 1000+ Rating Points) ───────────────────────────────────
 export const RANK_TIERS = [
-  { name: 'Pawn',   min: 0,   max: 4,   depth: 2, color: '#94a3b8', emoji: '♙' },
-  { name: 'Knight', min: 5,   max: 14,  depth: 3, color: '#10b981', emoji: '♘' },
-  { name: 'Bishop', min: 15,  max: 29,  depth: 3, color: '#3b82f6', emoji: '♗' },
-  { name: 'Rook',   min: 30,  max: 49,  depth: 4, color: '#8b5cf6', emoji: '♖' },
-  { name: 'Queen',  min: 50,  max: 99,  depth: 4, color: '#f59e0b', emoji: '♛' },
-  { name: 'King',   min: 100, max: Infinity, depth: 5, color: '#f43f5e', emoji: '♚' },
+  { name: 'Pawn',   min: 0,   max: 150,  depth: 2, color: '#94a3b8', emoji: '♙' },
+  { name: 'Knight', min: 151, max: 350,  depth: 3, color: '#10b981', emoji: '♘' },
+  { name: 'Bishop', min: 351, max: 550,  depth: 3, color: '#3b82f6', emoji: '♗' },
+  { name: 'Rook',   min: 551, max: 750,  depth: 4, color: '#8b5cf6', emoji: '♖' },
+  { name: 'Queen',  min: 751, max: 900,  depth: 4, color: '#f59e0b', emoji: '♛' },
+  { name: 'King',   min: 901, max: Infinity, depth: 5, color: '#f43f5e', emoji: '♚' },
 ];
 
-export function getTier(wins: number) {
-  return RANK_TIERS.find(t => wins >= t.min && wins <= t.max) || RANK_TIERS[0];
+export function getTier(rating: number = 0) {
+  const r = Math.max(0, rating);
+  return RANK_TIERS.find(t => r >= t.min && r <= t.max) || RANK_TIERS[0];
 }
 
 export interface UserProfile {
   uid: string;
   username: string;
-  userTag: string;
+  userTag?: string;
   email: string;
+  rating: number; // 0 to 1000+
   wins: number;
   losses: number;
   draws: number;
@@ -48,9 +50,9 @@ export function generateUserTag(uid: string): string {
 }
 
 export function userWithTier(user: UserProfile) {
-  const tier = getTier(user.wins);
-  const tag = user.userTag || generateUserTag(user.uid);
-  return { ...user, userTag: tag, rank: tier.name, rankColor: tier.color, rankEmoji: tier.emoji, aiDepth: tier.depth };
+  const rating = user.rating ?? Math.min(1000, (user.wins || 0) * 30);
+  const tier = getTier(rating);
+  return { ...user, rating, rank: tier.name, rankColor: tier.color, rankEmoji: tier.emoji, aiDepth: tier.depth };
 }
 
 // ─── Auth ──────────────────────────────────────────────────────────────────────
@@ -71,7 +73,7 @@ export async function register(username: string, email: string, password: string
     username: username.trim(),
     userTag: tag,
     email,
-    wins: 0, losses: 0, draws: 0, gamesPlayed: 0,
+    wins: 0, losses: 0, draws: 0, gamesPlayed: 0, rating: 0,
     createdAt: new Date().toISOString(),
   };
   await setDoc(doc(db, 'users', cred.user.uid), profile);
@@ -145,7 +147,7 @@ export async function loginWithGoogle(): Promise<UserProfile> {
     username,
     userTag: tag,
     email: cred.user.email || '',
-    wins: 0, losses: 0, draws: 0, gamesPlayed: 0,
+    wins: 0, losses: 0, draws: 0, gamesPlayed: 0, rating: 0,
     createdAt: new Date().toISOString(),
   };
   await setDoc(doc(db, 'users', uid), profile);
@@ -190,7 +192,7 @@ export async function getProfileById(uid: string, firebaseUser?: User): Promise<
       username,
       userTag: tag,
       email: firebaseUser.email || '',
-      wins: 0, losses: 0, draws: 0, gamesPlayed: 0,
+      wins: 0, losses: 0, draws: 0, gamesPlayed: 0, rating: 0,
       createdAt: new Date().toISOString(),
     };
     await setDoc(doc(db, 'users', uid), profile).catch(() => {});
@@ -209,29 +211,43 @@ export async function updateStats(
 
   let deltaScore = 0;
   if (result === 'win') {
-    deltaScore = movesCount < 6 ? 10 : movesCount < 16 ? 15 : 25;
+    deltaScore = movesCount < 10 ? 40 : movesCount < 30 ? 30 : 25;
   } else if (result === 'loss') {
-    deltaScore = movesCount < 6 ? -5 : movesCount < 16 ? -10 : -15;
+    deltaScore = movesCount < 6 ? -10 : -15;
   } else {
-    // Draw -> 0 score change, no points deducted on either side
     deltaScore = 0;
   }
 
-  await updateDoc(doc(db, 'users', uid), {
-    gamesPlayed: increment(1),
-    ...(result === 'win'  ? { wins:   increment(1) } : {}),
-    ...(result === 'loss' ? { losses: increment(1) } : {}),
-    ...(result === 'draw' ? { draws:  increment(1) } : {}),
-  });
+  try {
+    const snap = await getDoc(doc(db, 'users', uid));
+    const currentRating = snap.exists() ? (snap.data().rating ?? Math.min(1000, (snap.data().wins || 0) * 30)) : 0;
+    const newRating = Math.max(0, currentRating + deltaScore);
+
+    await updateDoc(doc(db, 'users', uid), {
+      rating: newRating,
+      gamesPlayed: increment(1),
+      ...(result === 'win'  ? { wins:   increment(1) } : {}),
+      ...(result === 'loss' ? { losses: increment(1) } : {}),
+      ...(result === 'draw' ? { draws:  increment(1) } : {}),
+    });
+  } catch (e) {
+    console.warn('Error updating user stats:', e);
+  }
 
   return { deltaScore };
 }
 
 export async function getLeaderboard(): Promise<UserProfile[]> {
   const db = getFirebaseDb();
-  const q = query(collection(db, 'users'), orderBy('wins', 'desc'), limit(20));
-  const snap = await getDocs(q);
-  return snap.docs.map(d => d.data() as UserProfile);
+  try {
+    const q = query(collection(db, 'users'), orderBy('rating', 'desc'), limit(20));
+    const snap = await getDocs(q);
+    return snap.docs.map(d => d.data() as UserProfile);
+  } catch {
+    const qFallback = query(collection(db, 'users'), orderBy('wins', 'desc'), limit(20));
+    const snapFallback = await getDocs(qFallback);
+    return snapFallback.docs.map(d => d.data() as UserProfile);
+  }
 }
 
 // ─── Automated Matchmaking ───────────────────────────────────────────────────
@@ -254,6 +270,8 @@ export async function enterMatchmakingQueue(
     let bestMatch: any = null;
     let minDiff = Infinity;
 
+    const myRating = user?.rating ?? Math.min(1000, (user?.wins || 0) * 30);
+
     for (const d of snapDocs) {
       const data = typeof d.data === 'function' ? d.data() : d;
       const age = Date.now() - (data?.createdAt || 0);
@@ -263,7 +281,8 @@ export async function enterMatchmakingQueue(
 
       // Filter for valid active waiting players (excluding self)
       if (data.uid !== myUid && data.status === 'waiting') {
-        const diff = Math.abs((data.wins || 0) - (user?.wins || 0));
+        const oppRating = data.rating ?? Math.min(1000, (data.wins || 0) * 30);
+        const diff = Math.abs(oppRating - myRating);
         if (diff < minDiff) {
           minDiff = diff;
           bestMatch = data;

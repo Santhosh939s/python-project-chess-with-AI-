@@ -15,7 +15,8 @@ export default function ProfileModal({ user, onUpdateUser, onClose }: Props) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
 
-  const tier = getTier(user.wins || 0);
+  const rating = user.rating ?? Math.min(1000, (user.wins || 0) * 30);
+  const tier = getTier(rating);
 
   async function handleSaveUsername(e: React.FormEvent) {
     e.preventDefault();
@@ -69,15 +70,12 @@ export default function ProfileModal({ user, onUpdateUser, onClose }: Props) {
             👤
           </div>
 
-          {/* Username & Tag Row */}
+          {/* Username Row */}
           {!isEditing ? (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem' }}>
               <h2 className="modal-title" style={{ margin: 0, fontSize: '1.45rem', fontWeight: 800 }}>
                 {user.username}
               </h2>
-              <span style={{ color: 'var(--accent-light)', fontSize: '0.85rem', fontWeight: 700 }}>
-                {user.userTag}
-              </span>
               <button
                 type="button"
                 onClick={() => { setIsEditing(true); setError(''); setSuccess(''); }}
@@ -109,8 +107,22 @@ export default function ProfileModal({ user, onUpdateUser, onClose }: Props) {
             </div>
           )}
 
-          <div style={{ fontSize: '0.85rem', color: tier.color, fontWeight: 700, marginTop: 4 }}>
-            {tier.emoji} {tier.name} Rank
+          {/* Rating Score & Rank Badge */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginTop: 6 }}>
+            <span style={{
+              background: 'rgba(139, 92, 246, 0.25)',
+              border: '1px solid rgba(139, 92, 246, 0.5)',
+              color: 'var(--accent-light)',
+              padding: '0.2rem 0.65rem',
+              borderRadius: 20,
+              fontSize: '0.82rem',
+              fontWeight: 800
+            }}>
+              ⭐ {rating} / 1000 Rating
+            </span>
+            <span style={{ fontSize: '0.85rem', color: tier.color, fontWeight: 700 }}>
+              {tier.emoji} {tier.name} Rank
+            </span>
           </div>
         </div>
 
@@ -202,7 +214,7 @@ export default function ProfileModal({ user, onUpdateUser, onClose }: Props) {
         {!isEditing && (
           <div style={{ textAlign: 'center', marginTop: '0.5rem' }}>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              Unique ID: <strong style={{ color: 'var(--accent-light)' }}>{user.userTag}</strong> · Compressed database storage active
+              Compressed database storage active for unique username matching
             </span>
           </div>
         )}
