@@ -210,7 +210,8 @@ export async function enterMatchmakingQueue(
 ): Promise<() => void> {
   const db = getFirebaseDb();
   const queueRef = collection(db, 'matchmaking_queue');
-  const myDocRef = doc(db, 'matchmaking_queue', user.uid);
+  const myUid = user?.uid || `user_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+  const myDocRef = doc(db, 'matchmaking_queue', myUid);
 
   let matched = false;
 
@@ -223,17 +224,14 @@ export async function enterMatchmakingQueue(
 
     for (const d of snapDocs) {
       const data = typeof d.data === 'function' ? d.data() : d;
-      const age = Date.now() - (data.createdAt || 0);
+      const age = Date.now() - (data?.createdAt || 0);
 
-      // Clean up stale entries older than 20 seconds
-      if (data && data.uid && age > 20000) {
-        deleteDoc(doc(db, 'matchmaking_queue', data.uid)).catch(() => {});
-        continue;
-      }
+      // Ignore expired entries (> 20s old) without deleting (prevents security rule permission errors)
+      if (!data || !data.uid || age > 20000) continue;
 
-      // Filter for valid active waiting players
-      if (data && data.uid && data.uid !== user.uid && data.status === 'waiting' && age <= 20000) {
-        const diff = Math.abs((data.wins || 0) - (user.wins || 0));
+      // Filter for valid active waiting players (excluding self)
+      if (data.uid !== myUid && data.status === 'waiting') {
+        const diff = Math.abs((data.wins || 0) - (user?.wins || 0));
         if (diff < minDiff) {
           minDiff = diff;
           bestMatch = data;
@@ -248,7 +246,7 @@ export async function enterMatchmakingQueue(
         await updateDoc(doc(db, 'matchmaking_queue', bestMatch.uid), {
           status: 'matched',
           matchedPeerId: peerId,
-          matchedName: user.username,
+          matchedName: user?.username || 'Player',
           matchedRole: 'guest',
         });
 
@@ -267,49 +265,59 @@ export async function enterMatchmakingQueue(
     }
   }
 
-  // 1. Listen to real-time changes on the entire matchmaking_queue collection!
-  const unsubCollection = onSnapshot(queueRef, (snapshot) => {
-    if (!matched) {
-      checkForOpponent(snapshot.docs);
-    }
-  });
+  // 1. Listen to real-time changes on the entire matchmaking_queue collection
+  const unsubCollection = onSnapshot(
+    queueRef,
+    (snapshot) => {
+      if (!matched) checkForOpponent(snapshot.docs);
+    },
+    (err) => console.warn('Collection snapshot warning:', err)
+  );
 
-  // 2. Also listen specifically to own document for when another player matches us!
-  const unsubMyDoc = onSnapshot(myDocRef, (docSnap) => {
-    if (docSnap.exists() && !matched) {
-      const data = docSnap.data();
-      if (data.status === 'matched' && data.matchedPeerId) {
-        matched = true;
+  // 2. Listen specifically to own document for when another player matches us
+  const unsubMyDoc = onSnapshot(
+    myDocRef,
+    (docSnap) => {
+      if (docSnap.exists() && !matched) {
+        const data = docSnap.data();
+        if (data.status === 'matched' && data.matchedPeerId) {
+          matched = true;
 
-        onMatched({
-          peerId: data.matchedPeerId,
-          role: 'host',
-          oppName: data.matchedName || 'Opponent',
-        });
+          onMatched({
+            peerId: data.matchedPeerId,
+            role: 'host',
+            oppName: data.matchedName || 'Opponent',
+          });
 
-        deleteDoc(myDocRef).catch(() => {});
+          deleteDoc(myDocRef).catch(() => {});
+        }
       }
-    }
-  });
+    },
+    (err) => console.warn('MyDoc snapshot warning:', err)
+  );
 
   // 3. Register self in queue as 'waiting'
-  await setDoc(myDocRef, {
-    uid: user.uid,
-    username: user.username,
-    wins: user.wins || 0,
-    peerId,
-    status: 'waiting',
-    matchedPeerId: null,
-    matchedName: null,
-    matchedRole: null,
-    createdAt: Date.now(),
-  });
+  try {
+    await setDoc(myDocRef, {
+      uid: myUid,
+      username: user?.username || 'Player',
+      wins: user?.wins || 0,
+      peerId,
+      status: 'waiting',
+      matchedPeerId: null,
+      matchedName: null,
+      matchedRole: null,
+      createdAt: Date.now(),
+    });
+  } catch (e) {
+    console.warn('Failed to set queue document:', e);
+  }
 
   // Cleanup function
   return () => {
     matched = true;
-    unsubCollection();
-    unsubMyDoc();
+    try { unsubCollection(); } catch {}
+    try { unsubMyDoc(); } catch {}
     deleteDoc(myDocRef).catch(() => {});
   };
 }
