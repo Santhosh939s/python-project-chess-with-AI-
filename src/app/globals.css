@@ -650,6 +650,19 @@ body::before {
   padding: 0.15rem 0.35rem;
   border-radius: 4px;
   font-weight: 500;
+  transition: all 0.15s ease;
+}
+
+.move-san:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.move-san.active-move {
+  background: #3b82f6 !important;
+  color: #ffffff !important;
+  font-weight: 800 !important;
+  box-shadow: 0 0 8px rgba(59, 130, 246, 0.6);
 }
 
 .move-san.white { color: #e2e8f0; }

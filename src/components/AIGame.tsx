@@ -1,6 +1,6 @@
 'use client';
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Chess } from 'chess.js';
+import { Chess, type Move } from 'chess.js';
 import ChessBoard from '@/components/ChessBoard';
 import { getAIMove } from '@/lib/chessAI';
 import { getTier } from '@/lib/api';
@@ -21,8 +21,12 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
   const [status, setStatus] = useState('');
   const [gameOver, setGameOver] = useState<'win' | 'loss' | 'draw' | null>(null);
   const [lastMove, setLastMove] = useState<{ from: string; to: string } | null>(null);
-  const [moveHistory, setMoveHistory] = useState<string[]>([]);
+  const [moveHistory, setMoveHistory] = useState<Move[]>([]);
   const [checkSquare, setCheckSquare] = useState<string | null>(null);
+
+  // Move replay state (null = showing live board)
+  const [viewIndex, setViewIndex] = useState<number | null>(null);
+
   const historyEndRef = useRef<HTMLDivElement>(null);
 
   // 10-Minute Clocks (in seconds)
@@ -113,9 +117,11 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
       const move = getAIMove(chess, aiDepth);
       if (move) {
         chess.move(move);
+        const history = chess.history({ verbose: true });
         setLastMove({ from: move.from, to: move.to });
-        setMoveHistory(chess.history());
+        setMoveHistory(history);
         setFen(chess.fen());
+        setViewIndex(null); // Return to live move when AI plays
         updateStatus(chess);
       }
       setThinking(false);
@@ -133,8 +139,10 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
   }, []);
 
   useEffect(() => {
-    historyEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [moveHistory]);
+    if (viewIndex === null) {
+      historyEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [moveHistory, viewIndex]);
 
   // Notify parent on game over
   useEffect(() => {
@@ -144,17 +152,44 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
 
   function handlePlayerMove(move: any) {
     const chess = chessRef.current;
-    // Execute move on master chessRef
     const executed = chess.move({ from: move.from, to: move.to, promotion: move.promotion });
     if (executed) {
+      const history = chess.history({ verbose: true });
       setLastMove({ from: executed.from, to: executed.to });
-      setMoveHistory(chess.history());
+      setMoveHistory(history);
       setFen(chess.fen());
+      setViewIndex(null); // Jump to live state when playing move
       updateStatus(chess);
       if (!chess.isGameOver()) {
         makeAIMove();
       }
     }
+  }
+
+  // ── Calculate Board & Last Move to Display (Live or Replay) ─────────────────
+  const isReplaying = viewIndex !== null && viewIndex < moveHistory.length;
+  let displayFen = fen;
+  let displayLastMove = lastMove;
+
+  if (isReplaying) {
+    const replayChess = new Chess();
+    for (let i = 0; i < viewIndex!; i++) {
+      replayChess.move(moveHistory[i]);
+    }
+    displayFen = replayChess.fen();
+    if (viewIndex! > 0) {
+      const m = moveHistory[viewIndex! - 1];
+      displayLastMove = { from: m.from, to: m.to };
+    } else {
+      displayLastMove = null;
+    }
+  }
+
+  // Navigation handlers
+  function stepToMove(idx: number) {
+    if (idx < 0) idx = 0;
+    if (idx >= moveHistory.length) setViewIndex(null);
+    else setViewIndex(idx);
   }
 
   function formatTime(seconds: number) {
@@ -170,8 +205,18 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
   const colorLabel = playerColor === 'w' ? '⬜ White' : '⬛ Black';
   const aiLabel    = playerColor === 'w' ? '⬛ Black' : '⬜ White';
 
-  const pairs: [string, string?][] = [];
-  for (let i = 0; i < moveHistory.length; i += 2) pairs.push([moveHistory[i], moveHistory[i+1]]);
+  // Group move history into pairs (White move, Black move)
+  const pairs: { w: Move; b?: Move; wIdx: number; bIdx?: number }[] = [];
+  for (let i = 0; i < moveHistory.length; i += 2) {
+    pairs.push({
+      w: moveHistory[i],
+      b: moveHistory[i + 1],
+      wIdx: i + 1,
+      bIdx: moveHistory[i + 1] ? i + 2 : undefined,
+    });
+  }
+
+  const activeMoveIndex = viewIndex === null ? moveHistory.length : viewIndex;
 
   return (
     <div className="app-content">
@@ -189,20 +234,47 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
           </div>
         </div>
 
+        {/* Replay Banner Warning */}
+        {isReplaying && (
+          <div style={{
+            background: 'rgba(59, 130, 246, 0.15)',
+            border: '1px solid rgba(59, 130, 246, 0.4)',
+            borderRadius: 10,
+            padding: '0.5rem 1rem',
+            margin: '0.4rem 0',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            fontSize: '0.85rem',
+            color: '#93c5fd'
+          }}>
+            <span>🔍 Viewing Past Move {viewIndex} / {moveHistory.length}</span>
+            <button
+              className="btn btn-secondary"
+              onClick={() => setViewIndex(null)}
+              style={{ padding: '0.25rem 0.6rem', fontSize: '0.78rem' }}
+            >
+              ▶ Resume Live Game
+            </button>
+          </div>
+        )}
+
         {/* Board */}
         <ChessBoard
-          fen={fen}
+          fen={displayFen}
           playerColor={playerColor}
           onMove={handlePlayerMove}
-          disabled={thinking || !!gameOver || !isUserTurn}
-          lastMove={lastMove}
-          checkSquare={checkSquare}
+          disabled={thinking || !!gameOver || !isUserTurn || isReplaying}
+          lastMove={displayLastMove}
+          checkSquare={isReplaying ? null : checkSquare}
         />
 
         {/* Bottom Clock & User Info Bar */}
         <div className="player-bar user-bar">
           <div className="player-bar-info">
-            <div className="player-bar-name">👤 {user?.username ?? 'Player'} ({colorLabel})</div>
+            <div className="player-bar-name">
+              👤 {user?.username ?? 'Player'} <span style={{ color: 'var(--accent-light)', fontSize: '0.75rem' }}>{user?.userTag}</span> ({colorLabel})
+            </div>
             <div className="player-bar-rank" style={{ color: tier.color }}>
               {tier.emoji} {tier.name} · {user?.wins ?? 0}W {user?.losses ?? 0}L
             </div>
@@ -252,15 +324,79 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
           </div>
         )}
 
+        {/* Move History & Replay Navigation Controls */}
         <div className="glass-card history-card">
-          <div className="controls-title">Move History</div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+            <div className="controls-title" style={{ margin: 0 }}>Move History</div>
+            {moveHistory.length > 0 && (
+              <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                Click move to preview
+              </span>
+            )}
+          </div>
+
+          {/* Stepper Buttons */}
+          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+            <button
+              className="btn btn-secondary"
+              style={{ flex: 1, padding: '0.35rem 0', fontSize: '0.8rem' }}
+              onClick={() => stepToMove(0)}
+              disabled={moveHistory.length === 0 || activeMoveIndex === 0}
+              title="Start of game"
+            >
+              ⏮️ First
+            </button>
+            <button
+              className="btn btn-secondary"
+              style={{ flex: 1, padding: '0.35rem 0', fontSize: '0.8rem' }}
+              onClick={() => stepToMove(activeMoveIndex - 1)}
+              disabled={moveHistory.length === 0 || activeMoveIndex === 0}
+              title="Previous move"
+            >
+              ◀ Prev
+            </button>
+            <button
+              className="btn btn-secondary"
+              style={{ flex: 1, padding: '0.35rem 0', fontSize: '0.8rem' }}
+              onClick={() => stepToMove(activeMoveIndex + 1)}
+              disabled={moveHistory.length === 0 || activeMoveIndex >= moveHistory.length}
+              title="Next move"
+            >
+              ▶ Next
+            </button>
+            <button
+              className="btn btn-secondary"
+              style={{ flex: 1, padding: '0.35rem 0', fontSize: '0.8rem' }}
+              onClick={() => setViewIndex(null)}
+              disabled={viewIndex === null}
+              title="Live Game"
+            >
+              ⏭️ Live
+            </button>
+          </div>
+
+          {/* Moves Scroll Container */}
           <div className="history-scroll">
             {pairs.length === 0 && <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>No moves yet</div>}
-            {pairs.map(([w, b], i) => (
+            {pairs.map(({ w, b, wIdx, bIdx }, i) => (
               <div key={i} className="move-row">
                 <span className="move-num">{i + 1}.</span>
-                <span className="move-san white">{w}</span>
-                <span className="move-san black">{b ?? ''}</span>
+                <span
+                  className={`move-san white ${activeMoveIndex === wIdx ? 'active-move' : ''}`}
+                  onClick={() => setViewIndex(wIdx)}
+                  style={{ cursor: 'pointer', padding: '2px 6px', borderRadius: 4 }}
+                >
+                  {w.san}
+                </span>
+                {b && (
+                  <span
+                    className={`move-san black ${activeMoveIndex === bIdx ? 'active-move' : ''}`}
+                    onClick={() => setViewIndex(bIdx!)}
+                    style={{ cursor: 'pointer', padding: '2px 6px', borderRadius: 4 }}
+                  >
+                    {b.san}
+                  </span>
+                )}
               </div>
             ))}
             <div ref={historyEndRef} />

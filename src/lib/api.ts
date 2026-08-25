@@ -39,6 +39,10 @@ export interface UserProfile {
   createdAt: string;
 }
 
+export function compressUsername(raw: string): string {
+  return raw.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
 export function generateUserTag(uid: string): string {
   return `#${uid.slice(-4).toUpperCase()}`;
 }
@@ -54,21 +58,24 @@ export async function register(username: string, email: string, password: string
   const db = getFirebaseDb();
   const auth = getFirebaseAuth();
 
-  const snap = await getDoc(doc(db, 'usernames', username.toLowerCase()));
+  const compressed = compressUsername(username);
+  if (compressed.length < 3) throw new Error('Username must contain at least 3 alphanumeric characters');
+
+  const snap = await getDoc(doc(db, 'usernames', compressed));
   if (snap.exists()) throw new Error('Username already taken');
 
   const cred = await createUserWithEmailAndPassword(auth, email, password);
   const tag = generateUserTag(cred.user.uid);
   const profile: UserProfile = {
     uid: cred.user.uid,
-    username: username.toLowerCase(),
+    username: username.trim(),
     userTag: tag,
     email,
     wins: 0, losses: 0, draws: 0, gamesPlayed: 0,
     createdAt: new Date().toISOString(),
   };
   await setDoc(doc(db, 'users', cred.user.uid), profile);
-  await setDoc(doc(db, 'usernames', username.toLowerCase()), { uid: cred.user.uid });
+  await setDoc(doc(db, 'usernames', compressed), { uid: cred.user.uid, username: username.trim() });
   return profile;
 }
 
@@ -97,7 +104,8 @@ export async function loginWithGoogle(): Promise<UserProfile> {
   }
 
   // First time — create profile using Google display name
-  const rawName = cred.user.displayName?.replace(/\s+/g, '').toLowerCase() || `player${uid.slice(0,6)}`;
+  const rawName = cred.user.displayName || cred.user.email?.split('@')[0] || `player${uid.slice(0,4)}`;
+  const compressed = compressUsername(rawName) || `player${uid.slice(0,4)}`;
   const username = rawName.slice(0, 20);
   const tag = generateUserTag(uid);
   const profile: UserProfile = {
@@ -109,7 +117,7 @@ export async function loginWithGoogle(): Promise<UserProfile> {
     createdAt: new Date().toISOString(),
   };
   await setDoc(doc(db, 'users', uid), profile);
-  await setDoc(doc(db, 'usernames', username), { uid });
+  await setDoc(doc(db, 'usernames', compressed), { uid, username });
   return profile;
 }
 
