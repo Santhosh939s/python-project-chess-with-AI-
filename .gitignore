@@ -1,0 +1,25 @@
+# Dependencies
+node_modules/
+chess-ai-web/node_modules/
+server/node_modules/
+
+# Next.js
+chess-ai-web/.next/
+chess-ai-web/out/
+
+# Environment files (keep examples, ignore actuals)
+chess-ai-web/.env.local
+chess-ai-web/.env*.local
+server/.env
+
+# Build outputs
+chess-ai-web/build/
+dist/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
