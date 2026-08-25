@@ -213,33 +213,29 @@ export async function enterMatchmakingQueue(
   const myDocRef = doc(db, 'matchmaking_queue', user.uid);
 
   let matched = false;
-  let pollInterval: any = null;
 
-  // Function to search for waiting players
-  async function tryMatch() {
+  // Function to process candidates in queue
+  async function checkForOpponent(snapDocs: any[]) {
     if (matched) return;
-    try {
-      const q = query(queueRef, where('status', '==', 'waiting'));
-      const snap = await getDocs(q);
 
-      let bestMatch: any = null;
-      let minDiff = Infinity;
+    let bestMatch: any = null;
+    let minDiff = Infinity;
 
-      snap.forEach((d) => {
-        const data = d.data();
-        if (data.uid !== user.uid && Date.now() - (data.createdAt || 0) < 120000) {
-          const diff = Math.abs((data.wins || 0) - (user.wins || 0));
-          if (diff < minDiff) {
-            minDiff = diff;
-            bestMatch = data;
-          }
+    for (const d of snapDocs) {
+      const data = typeof d.data === 'function' ? d.data() : d;
+      // Filter out self and expired docs (> 2 min)
+      if (data && data.uid && data.uid !== user.uid && data.status === 'waiting' && Date.now() - (data.createdAt || 0) < 120000) {
+        const diff = Math.abs((data.wins || 0) - (user.wins || 0));
+        if (diff < minDiff) {
+          minDiff = diff;
+          bestMatch = data;
         }
-      });
+      }
+    }
 
-      if (bestMatch && !matched) {
-        matched = true;
-        if (pollInterval) clearInterval(pollInterval);
-
+    if (bestMatch && !matched) {
+      matched = true;
+      try {
         // Update target player's doc to matched
         await updateDoc(doc(db, 'matchmaking_queue', bestMatch.uid), {
           status: 'matched',
@@ -256,35 +252,26 @@ export async function enterMatchmakingQueue(
           role: 'guest',
           oppName: bestMatch.username || 'Opponent',
         });
+      } catch (e) {
+        matched = false;
+        console.warn('Match update error:', e);
       }
-    } catch (e) {
-      console.warn('Matchmaking poll error:', e);
     }
   }
 
-  // 1. Immediately register self in queue
-  await setDoc(myDocRef, {
-    uid: user.uid,
-    username: user.username,
-    wins: user.wins || 0,
-    peerId,
-    status: 'waiting',
-    matchedPeerId: null,
-    matchedName: null,
-    matchedRole: null,
-    createdAt: Date.now(),
+  // 1. Listen to real-time changes on the entire matchmaking_queue collection!
+  const unsubCollection = onSnapshot(queueRef, (snapshot) => {
+    if (!matched) {
+      checkForOpponent(snapshot.docs);
+    }
   });
 
-  // 2. Attempt immediate match check
-  await tryMatch();
-
-  // 3. Listen for incoming match from another player who matched us
-  const unsub = onSnapshot(myDocRef, (docSnap) => {
-    if (docSnap.exists()) {
+  // 2. Also listen specifically to own document for when another player matches us!
+  const unsubMyDoc = onSnapshot(myDocRef, (docSnap) => {
+    if (docSnap.exists() && !matched) {
       const data = docSnap.data();
-      if (data.status === 'matched' && data.matchedPeerId && !matched) {
+      if (data.status === 'matched' && data.matchedPeerId) {
         matched = true;
-        if (pollInterval) clearInterval(pollInterval);
 
         onMatched({
           peerId: data.matchedPeerId,
@@ -297,17 +284,24 @@ export async function enterMatchmakingQueue(
     }
   });
 
-  // 4. Poll every 2 seconds to catch simultaneous clicks
-  pollInterval = setInterval(() => {
-    if (!matched) {
-      tryMatch();
-    }
-  }, 2000);
+  // 3. Register self in queue as 'waiting'
+  await setDoc(myDocRef, {
+    uid: user.uid,
+    username: user.username,
+    wins: user.wins || 0,
+    peerId,
+    status: 'waiting',
+    matchedPeerId: null,
+    matchedName: null,
+    matchedRole: null,
+    createdAt: Date.now(),
+  });
 
+  // Cleanup function
   return () => {
     matched = true;
-    if (pollInterval) clearInterval(pollInterval);
-    unsub();
+    unsubCollection();
+    unsubMyDoc();
     deleteDoc(myDocRef).catch(() => {});
   };
 }
