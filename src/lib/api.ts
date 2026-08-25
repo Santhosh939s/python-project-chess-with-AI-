@@ -85,6 +85,38 @@ export async function login(email: string, password: string): Promise<UserProfil
   return getProfileById(cred.user.uid, cred.user);
 }
 
+export async function changeUsername(uid: string, currentUsername: string, newUsername: string): Promise<string> {
+  const db = getFirebaseDb();
+  const trimmed = newUsername.trim();
+  const newCompressed = compressUsername(trimmed);
+  const currentCompressed = compressUsername(currentUsername);
+
+  if (newCompressed.length < 3) {
+    throw new Error('Username must contain at least 3 alphanumeric characters');
+  }
+
+  if (newCompressed === currentCompressed) {
+    return trimmed;
+  }
+
+  // Check if new compressed username exists in DB
+  const snap = await getDoc(doc(db, 'usernames', newCompressed));
+  if (snap.exists()) {
+    throw new Error('Username is already taken by another player');
+  }
+
+  // Update user document
+  await updateDoc(doc(db, 'users', uid), { username: trimmed });
+
+  // Add new compressed entry and remove old compressed entry
+  await setDoc(doc(db, 'usernames', newCompressed), { uid, username: trimmed });
+  if (currentCompressed) {
+    deleteDoc(doc(db, 'usernames', currentCompressed)).catch(() => {});
+  }
+
+  return trimmed;
+}
+
 export async function loginWithGoogle(): Promise<UserProfile> {
   const auth = getFirebaseAuth();
   const db = getFirebaseDb();

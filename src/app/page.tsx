@@ -2,6 +2,7 @@
 export const dynamic = 'force-dynamic';
 import { useState, useEffect } from 'react';
 import AuthModal from '@/components/AuthModal';
+import ProfileModal from '@/components/ProfileModal';
 import AIGame from '@/components/AIGame';
 import OnlineGame from '@/components/OnlineGame';
 import Leaderboard from '@/components/Leaderboard';
@@ -17,6 +18,7 @@ export default function HomePage() {
   const [screen, setScreen] = useState<Screen>('home');
   const [user, setUser] = useState<any>(null);
   const [showAuth, setShowAuth] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
   const [pendingMode, setPendingMode] = useState<Screen | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
@@ -121,16 +123,23 @@ export default function HomePage() {
           {authLoading ? (
             <div style={{ width: 80, height: 36, background: 'rgba(255,255,255,0.05)', borderRadius: 10 }} />
           ) : user ? (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: '0.85rem', fontWeight: 700 }}>
-                  {user.username} <span style={{ color: 'var(--accent-light)', fontSize: '0.75rem' }}>{user.userTag}</span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <button
+                className="btn btn-secondary"
+                onClick={() => setShowProfile(true)}
+                style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.4rem 0.75rem' }}
+                title="View & Edit Profile"
+              >
+                <span style={{ fontSize: '1.1rem' }}>👤</span>
+                <div style={{ textAlign: 'left' }}>
+                  <div style={{ fontSize: '0.82rem', fontWeight: 700, lineHeight: 1.1 }}>
+                    {user.username} <span style={{ color: 'var(--accent-light)', fontSize: '0.7rem' }}>{user.userTag}</span>
+                  </div>
+                  <div style={{ fontSize: '0.68rem', color: tier?.color, fontWeight: 600 }}>
+                    {tier?.emoji} {tier?.name}
+                  </div>
                 </div>
-                <div style={{ fontSize: '0.7rem', fontWeight: 600, display: 'flex', gap: 6, justifyContent: 'flex-end' }}>
-                  <span style={{ color: tier?.color }}>{tier?.emoji} {tier?.name}</span>
-                  <span style={{ color: 'var(--text-muted)' }}>{user.wins}W · {user.losses}L</span>
-                </div>
-              </div>
+              </button>
               <button className="btn btn-secondary" onClick={handleLogout} style={{ fontSize: '0.78rem' }}>Sign Out</button>
             </div>
           ) : (
@@ -236,6 +245,18 @@ export default function HomePage() {
       )}
 
       {showAuth && <AuthModal onSuccess={handleAuthSuccess} />}
+      {showProfile && user && (
+        <ProfileModal
+          user={user}
+          onUpdateUser={(updated) => {
+            const fullUser = userWithTier(updated);
+            setUser(fullUser);
+            localStorage.setItem('chess_user_session', JSON.stringify(fullUser));
+            showToast(`Username updated to ${updated.username}! ✨`);
+          }}
+          onClose={() => setShowProfile(false)}
+        />
+      )}
       {showLeaderboard && <Leaderboard onClose={() => setShowLeaderboard(false)} />}
     </div>
   );

@@ -17,6 +17,18 @@ type Phase = 'menu' | 'matching' | 'hosting' | 'joining' | 'playing';
 const INITIAL_TIME = 600; // 10 minutes in seconds
 const BUFFER_SEARCH_SECONDS = 15; // 15s search window
 
+const PEER_OPTIONS = {
+  config: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+    ]
+  }
+};
+
 export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
   const [phase, setPhase] = useState<Phase>('menu');
   const [roomCode, setRoomCode] = useState('');
@@ -136,7 +148,7 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
     if (countdownTimerRef.current) clearInterval(countdownTimerRef.current);
 
     const Peer = await loadPeer();
-    const peer = new Peer();
+    const peer = new Peer(PEER_OPTIONS);
     peerRef.current = peer;
 
     peer.on('open', async (myPeerId: string) => {
@@ -204,7 +216,7 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
     setPhase('hosting');
     const Peer = await loadPeer();
     const code = Math.random().toString(36).slice(2, 8).toUpperCase();
-    const peer = new Peer(`chess-${code}`);
+    const peer = new Peer(`chess-${code}`, PEER_OPTIONS);
     peerRef.current = peer;
 
     peer.on('open', () => {
@@ -228,7 +240,7 @@ export default function OnlineGame({ user, onGameEnd, onBack }: Props) {
     setError('');
     setPhase('joining');
     const Peer = await loadPeer();
-    const peer = new Peer();
+    const peer = new Peer(PEER_OPTIONS);
     peerRef.current = peer;
 
     peer.on('open', () => {
