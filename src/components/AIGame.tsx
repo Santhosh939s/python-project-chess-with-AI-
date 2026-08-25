@@ -1,5 +1,5 @@
 'use client';
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Chess, type Move } from 'chess.js';
 import ChessBoard from '@/components/ChessBoard';
 import TopMoveTicker from '@/components/TopMoveTicker';
@@ -189,23 +189,26 @@ export default function AIGame({ user, onGameEnd, onBack }: Props) {
     setGameOver('loss');
   }
 
-  // ── Calculate Board & Last Move to Display (Live or Replay) ─────────────────
+  // ── Calculate Board & Last Move to Display (Cached with useMemo for 0ms lag) ─
+  const historyCache = useMemo(() => {
+    const replay = new Chess();
+    const fens: string[] = [replay.fen()];
+    const moves: ({ from: string; to: string } | null)[] = [null];
+    for (const m of moveHistory) {
+      replay.move(m);
+      fens.push(replay.fen());
+      moves.push({ from: m.from, to: m.to });
+    }
+    return { fens, moves };
+  }, [moveHistory]);
+
   const isReplaying = viewIndex !== null && viewIndex < moveHistory.length;
   let displayFen = fen;
   let displayLastMove = lastMove;
 
-  if (isReplaying) {
-    const replayChess = new Chess();
-    for (let i = 0; i < viewIndex!; i++) {
-      replayChess.move(moveHistory[i]);
-    }
-    displayFen = replayChess.fen();
-    if (viewIndex! > 0) {
-      const m = moveHistory[viewIndex! - 1];
-      displayLastMove = { from: m.from, to: m.to };
-    } else {
-      displayLastMove = null;
-    }
+  if (isReplaying && viewIndex !== null) {
+    displayFen = historyCache.fens[viewIndex] || fen;
+    displayLastMove = historyCache.moves[viewIndex] || null;
   }
 
   // Navigation handlers
