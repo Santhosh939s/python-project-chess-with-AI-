@@ -393,16 +393,15 @@ body::before {
 .piece-svg {
   width: 100%;
   height: 100%;
-  filter: drop-shadow(0 3px 5px rgba(0,0,0,0.35));
+  filter: drop-shadow(0 2px 3px rgba(0,0,0,0.3));
 }
 
-/* Crisp White Outline Stroke for Black Pieces on Dark Squares */
 .piece-container.piece-black .piece-svg {
-  filter: drop-shadow(0 0 1px #ffffff) drop-shadow(0 0 2px rgba(255, 255, 255, 0.9)) drop-shadow(0 2px 4px rgba(0, 0, 0, 0.9));
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.4));
 }
 
 .piece-container.piece-white .piece-svg {
-  filter: drop-shadow(0 0 1px rgba(0, 0, 0, 0.8)) drop-shadow(0 3px 5px rgba(0, 0, 0, 0.5));
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.35));
 }
 
 .square:hover .piece-container {
